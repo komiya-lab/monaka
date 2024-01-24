@@ -15,15 +15,15 @@ class Tokenizer(Registrable):
         self.pad_token_id = lm_tokenizer.pad_token_id
         super().__init__()
 
-    def tokenize(self, words):
-        tokens = self.lm_tokenizer(words, is_split_into_words=True, add_special_tokens=self.add_special_tokens)
+    def tokenize(self, words, max_length=None):
+        tokens = self.lm_tokenizer(words, is_split_into_words=True, add_special_tokens=self.add_special_tokens, max_length=max_length)
         return tokens
     
 
 @Tokenizer.register("auto")
 class AutoLMTokenizer(Tokenizer):
     
-    def __init__(self, name: str, add_special_tokens=False) -> None:
+    def __init__(self, name: str, add_special_tokens=False, **kwargs) -> None:
         lm_tokenizer = AutoTokenizer.from_pretrained(name)
         super().__init__(lm_tokenizer, add_special_tokens)
 
@@ -59,8 +59,8 @@ try:
     @Tokenizer.register("bert-tohoku-ja")
     class BertMecabLMTokenizer(Tokenizer):
 
-        def __init__(self, name) -> None:
-            lm_tokenizer = BertMecabTokenizerFast.from_pretrained(name)
+        def __init__(self, **kwargs) -> None:
+            lm_tokenizer = BertMecabTokenizerFast.from_pretrained("cl-tohoku/bert-base-japanese-whole-word-masking")
             super().__init__(lm_tokenizer)
 
 except:

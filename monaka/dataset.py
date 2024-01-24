@@ -32,6 +32,8 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
             適切なTransoformesのTokenizerをラップしたTokenizer名
         lm_tokenizer_config (dict):
             Tokenizerのconfig
+        max_length (int):
+            データの最大長
         pos_as_tokens (bool):
             形態論情報を短単位の後に付与するかどうか default=False
         label_for_all_subwords (bool):
@@ -46,7 +48,7 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
             Each sentence includes fields obeying the data format defined in ``transform``.
     """
 
-    def __init__(self, jsonlfiles: Union[str, List[str]], label_file: str, pos_file: str, lm_tokenizer: str, lm_tokenizer_config: Dict, pos_as_tokens: bool=False, 
+    def __init__(self, jsonlfiles: Union[str, List[str]], label_file: str, pos_file: str, lm_tokenizer: str, lm_tokenizer_config: Dict, max_length: int=1024, pos_as_tokens: bool=False, 
                  label_for_all_subwords: bool=False,
                  **kwargs):
         self.sentences = list()
@@ -54,6 +56,7 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
         self.pad_token_id = self.tokenizer.pad_token_id
         self.pos_as_tokens = pos_as_tokens
         self.label_for_all_subwords = label_for_all_subwords
+        self.max_length = max_length
         self.jsonlfiles = jsonlfiles
 
         with open(label_file) as f:
@@ -76,13 +79,24 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
         logger.info(f"total {len(self.sentences)} sentences loaded.")
         super().__init__()
 
+    @staticmethod
+    def collate_function(data: List[Dict]):
+        #targets = ["input_ids", "label_ids", "pos_ids"]
+        res = dict()
+        #for target in targets:
+        #    if target not in data[0]:
+        #        continue
+        #    res[target] = [d[target] for d in data]
+        for k in data[0].keys():
+            res[k] = [d[k] for d in data]
+        return res
 
     def load(self, jsonlfile: str):
         with open(jsonlfile) as f:
             for line in f:
                 js = json.loads(line)
                 js["subwords"] = self.to_token_ids(js["tokens"], js["pos"] if self.pos_as_tokens else None)
-                js["input_ids"] = torch.tensor(js["subowrds"]["input_ids"])
+                js["input_ids"] = torch.tensor(js["subwords"]["input_ids"])
                 js["label_ids"] = self.to_label_ids(js["labels"], js["subwords"].word_ids() if self.label_for_all_subwords else None)
                 if self.pos_dic:
                     js["pos_ids"] = self.to_pos_ids(js["pos"], js["subwords"].word_ids() if self.label_for_all_subwords else None) 
@@ -98,9 +112,11 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
                     labels.append(labels_[idx])
                     prv = idx
                 else:
-                    labels.append(0)
+                    labels.append(1)
         else:
             labels = labels_
+        if len(labels) > self.max_length:
+            labels = labels[:self.max_length]
         return torch.tensor(labels)
     
 
@@ -114,7 +130,7 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
                     labels.append(labels_[idx])
                     prv = idx
                 else:
-                    labels.append(0)
+                    labels.append(1) # padding index = 1
         else:
             labels = labels_
         return torch.tensor(labels)
@@ -126,7 +142,7 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
         else:
             targets = tokens
 
-        return self.tokenizer.tokenize(targets, False)
+        return self.tokenizer.tokenize(targets, max_length=self.max_length)
 
     def __repr__(self):
         s = f"{self.__class__.__name__}("

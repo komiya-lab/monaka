@@ -23,7 +23,7 @@ class LMEmbedding(nn.Module, Registrable):
 
 @LMEmbedding.register("AutoLM")
 class AutoLMEmebedding(LMEmbedding):
-   """
+    """
    TransformersのAutoConfigとAutoModelを利用するEmbedding
 
     Args:
@@ -41,24 +41,23 @@ class AutoLMEmebedding(LMEmbedding):
             最大subword長 default 5120
    """
    
-   def __init__(self, model: str, requires_grad: bool, use_scalar_mix: bool, sclar_mix_dropout:float = 0.1, use_attentions: bool=False, max_len: int=5120) -> None:
-    self.model = model
-    self.requires_grad = requires_grad
-    self.use_scalar_mix = use_scalar_mix
-    self.sclar_mix_dropout = sclar_mix_dropout
-    self.use_attentions = use_attentions
-    self.max_len = max_len
+    def __init__(self, model: str, requires_grad: bool, use_scalar_mix: bool, sclar_mix_dropout:float = 0.1, use_attentions: bool=False) -> None:
+        self.model = model
+        self.requires_grad = requires_grad
+        self.use_scalar_mix = use_scalar_mix
+        self.sclar_mix_dropout = sclar_mix_dropout
+        self.use_attentions = use_attentions
 
-    self.config = AutoConfig.from_pretrained(model, output_hidden_states=True,
-                                            output_attentions=use_attentions)
-    self.lm = AutoModel.from_pretrained(model, config=self.config)
-    self.lm.requires_grad_(requires_grad)
-    self.n_layers = self.config.num_hidden_layers
-    self.pad_index = self.config.pad_token_id
-    self.sclar_mix = ScalarMix(self.n_layers, sclar_mix_dropout)
-
-    super().__init__(n_out=self.config.hidden_size)
-
+        self.config = AutoConfig.from_pretrained(model, output_hidden_states=True,
+                                                    output_attentions=use_attentions)
+            
+        super().__init__(n_out=self.config.hidden_size)
+        self.lm = AutoModel.from_pretrained(model, config=self.config)
+        self.lm.requires_grad_(requires_grad)
+        self.n_layers = self.config.num_hidden_layers
+        self.pad_index = self.config.pad_token_id
+        self.sclar_mix = ScalarMix(self.n_layers, sclar_mix_dropout)
+        
     def __repr__(self):
         s = f"{self.model}, n_out={self.n_out}"
         s += f", pad_index={self.pad_index}"
@@ -92,7 +91,7 @@ class AutoLMEmebedding(LMEmbedding):
         # - hidden_states (optional): [[batch_size, seq_length, hidden_size]] * (1 + layers)
         # - attentions (optional): [[batch_size, num_heads, seq_length, seq_length]] * layers
         # print('<BERT, GPU MiB:', memory_allocated() // (1024*1024)) # DEBUG
-        outputs = self.lm(subwords[:, :self.max_len], attention_mask=mask[:, :self.max_len].float())
+        outputs = self.lm(subwords, attention_mask=mask.float())
         # print('BERT>, GPU MiB:', memory_allocated() // (1024*1024)) # DEBUG
         if self.use_scalar_mix:
             bert_idx = -2 if self.use_attentions else -1

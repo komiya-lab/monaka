@@ -4,6 +4,7 @@ import os
 import datetime
 
 import torch
+import tqdm
 
 import torch.nn as nn
 import torch.distributed as dist
@@ -30,7 +31,7 @@ class Trainer:
             model_config: str,
             batch_size: int=8,
             epochs: int=1,
-            lr: float=2e-3,
+            lr: float=2e-5,
             mu: float=.9,
             nu: float=.9,
             epsilon: float=1e-12,
@@ -38,6 +39,7 @@ class Trainer:
             decay: float=.75,
             decay_steps: float=5000,
             patience: float=100,
+            evaluate_step:int =20,
             verbose: bool=True,
             **kwargs):
         
@@ -52,7 +54,7 @@ class Trainer:
         logger.info("loading test files")
         self.test_data = LUWJsonLDataset(test_files, **dataeset_options) if test_files else None
 
-        self.batch_size=batch_size // dist.get_world_size()
+        self.batch_size=batch_size
         self.epochs = epochs
         self.lr = lr
         self.mu = mu
@@ -63,6 +65,7 @@ class Trainer:
         self.decay_steps = decay_steps
         self.patience = patience
         self.verbose = verbose
+        self.evaluate_step = evaluate_step
         self.model_name = model_name
 
         logger.info("loading model")
@@ -77,7 +80,9 @@ class Trainer:
         os.makedirs(output_dir, exist_ok=True)
 
         init_logger(logger, f"{output_dir}/train.log", verbose=self.verbose)
-        init_device(device, local_rank)
+        init_device(str(device), local_rank)
+        if dist.is_initialized():
+            self.batch_size = self.batch_size // dist.get_world_size()
         self.model.to(device)
 
         optimizer = Adam(self.model.parameters(),
@@ -86,30 +91,33 @@ class Trainer:
                               self.epsilon)
         scheduler = ExponentialLR(optimizer, self.decay**(1/self.decay_steps))
 
-        train_loader = DataLoader(self.train_data, self.batch_size, shuffle=True)
-        dev_loader = DataLoader(self.dev_data, batch_size=self.batch_size, shuffle=False)
-        test_loader = DataLoader(self.test_data, batch_size=self.batch_size, shuffle=False) if self.test_data else None
+        train_loader = DataLoader(self.train_data, self.batch_size, shuffle=True, collate_fn=LUWJsonLDataset.collate_function)
+        dev_loader = DataLoader(self.dev_data, batch_size=self.batch_size, shuffle=False, collate_fn=LUWJsonLDataset.collate_function)
+        test_loader = DataLoader(self.test_data, batch_size=self.batch_size, shuffle=False, collate_fn=LUWJsonLDataset.collate_function) if self.test_data else None
         metric = -1
 
         for epoch in range(1, self.epochs + 1):
-            start = datetime.now()
+            start = datetime.datetime.now()
 
             logger.info(f"Epoch {epoch} / {self.epochs}:")
 
-            for data in progress_bar(train_loader):
-                subwords = pad_sequence(data["input_ids"].to(device), batch_first=True, padding_value=self.train_data.pad_token_id)
-                label_ids = pad_sequence(data["label_ids"].to(device), batch_first=True, padding_value=0)
-                pos_ids = pad_sequence(data["pos_ids"].to(device), batch_first=True, padding_value=0) if "pos_ids" in data else None
-                mask = label_ids.ne(0)
+            for i, data in tqdm.tqdm(enumerate(train_loader)):
+                subwords = pad_sequence(data["input_ids"], batch_first=True, padding_value=self.train_data.pad_token_id).to(device)
+                label_ids = pad_sequence(data["label_ids"], batch_first=True, padding_value=1).to(device)
+                pos_ids = pad_sequence(data["pos_ids"], batch_first=True, padding_value=1).to(device) if "pos_ids" in data else None
+                mask = label_ids.ne(1)
 
                 out = self.model(subwords, pos_ids)
                 loss = self.model.loss(out, label_ids, mask)
                 loss.backward()
-                nn.utils.clip_grad_norm_(self.model.parameters(), self.args.clip)
+                nn.utils.clip_grad_norm_(self.model.parameters(), self.clip)
                 optimizer.step()
                 scheduler.step()
+                if (i+1) % self.evaluate_step == 0:
+                    dev_loss, dev_acc = self.evaluate(dev_loader, device)
+                    logger.info(f"dev evaluation: loss {dev_loss}, acc {dev_acc}")
 
-            t = datetime.now() - start
+            t = datetime.datetime.now() - start
             logger.info("dev evaluation")
             dev_loss, dev_acc = self.evaluate(dev_loader, device)
 
@@ -131,11 +139,12 @@ class Trainer:
         correct = 0
         length = 0
         loss = 0
-        for data in progress_bar(dataloader):
-                subwords = pad_sequence(data["input_ids"].to(device), batch_first=True, padding_value=self.train_data.pad_token_id)
-                label_ids = pad_sequence(data["label_ids"].to(device), batch_first=True, padding_value=0)
-                pos_ids = pad_sequence(data["pos_ids"].to(device), batch_first=True, padding_value=0) if "pos_ids" in data else None
-                mask = label_ids.ne(0)
+        self.model.eval()
+        for data in dataloader:
+                subwords = pad_sequence(data["input_ids"], batch_first=True, padding_value=self.train_data.pad_token_id).to(device)
+                label_ids = pad_sequence(data["label_ids"], batch_first=True, padding_value=1).to(device)
+                pos_ids = pad_sequence(data["pos_ids"], batch_first=True, padding_value=1).to(device) if "pos_ids" in data else None
+                mask = label_ids.ne(1)
 
                 out = self.model(subwords, pos_ids)
                 loss += self.model.loss(out, label_ids, mask).detach().cpu().item()
@@ -143,6 +152,7 @@ class Trainer:
                 correct += ((pred == label_ids) & mask).sum().detach().cpu().item()
                 length += (mask).sum().detach().cpu().item()
         logger.info(f"accuracy: {correct/length*100}, loss: {loss}")
+        self.model.train(True)
         return loss, correct/length
     
     def save(self, path):

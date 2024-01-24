@@ -70,8 +70,9 @@ class SeqTaggingParserModel(LUWParserModel):
             mlp_dropout: float,
             lm_class_name: str,
             lm_class_config: Dict,
-            pos_padding_idx: int = 0,
+            pos_padding_idx: int = 1,
             **kwargs) -> None:
+        super().__init__(**kwargs)
         
         logger.info("Model: SeqTagging")
 
@@ -83,28 +84,31 @@ class SeqTaggingParserModel(LUWParserModel):
         self.lm_class_config = lm_class_config
         self.pos_padding_idx = pos_padding_idx
         
-        self.m_lm = LMEmbedding.by_name(lm_class_name).from_config(lm_class_config)
-        self.m_pos_emb = nn.Embedding(n_pos_emb, n_pos, pos_padding_idx) if len(n_pos) > 0 and len(n_pos_emb) > 0 else None
+        self.m_lm = LMEmbedding.by_name(lm_class_name)(**lm_class_config)
+        self.m_pos_emb = nn.Embedding(n_pos, n_pos_emb, pos_padding_idx) if n_pos > 0 and n_pos_emb > 0 else None
         self.m_pos_dropout = nn.Dropout(pos_dropout) if self.m_pos_emb else None
 
         self.n_in = self.m_lm.n_out if self.m_pos_emb is None else self.m_lm.n_out + n_pos_emb
         self.m_out = MLP(self.n_in, n_class, mlp_dropout)
 
         self.criterion = nn.CrossEntropyLoss()
-        super().__init__(**kwargs)
 
     def forward(self, words: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
         """
         words: [batch, words_len]
         pos: [batch, owrds_len]
         """
+        #print(words.size())
         words_emb = self.m_lm(words)
         if self.m_pos_emb:
+            #print(pos)
             pos_embs = self.m_pos_emb(pos)
             pos_embs = self.m_pos_dropout(pos_embs)
+            #print(words_emb.size())
+            #print(pos_embs.size())
+            words_emb = torch.cat((words_emb, pos_embs), dim=-1) # batch, words_len, hidden
 
-        emb = torch.cat((words_emb, pos_embs), dim=-1) # batch, words_len, hidden
-        out = self.m_out(emb)
+        out = self.m_out(words_emb)
 
         return out # batch, words_len, n_class
     
@@ -115,7 +119,7 @@ class SeqTaggingParserModel(LUWParserModel):
         mask: mask
         """
 
-        return self.criterion(out[mask], locals[mask])
+        return self.criterion(out[mask], labels[mask])
 
 
 class DistributedDataParallel(nn.parallel.DistributedDataParallel):

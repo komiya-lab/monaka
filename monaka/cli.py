@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List
 from monaka.trainer import Trainer
 
-app = typer.Typer()
+app = typer.Typer(pretty_exceptions_show_locals=False)
 
 @app.command()
 def create_vocab(jsonl_files: List[Path], output_dir: Path):
@@ -32,10 +32,11 @@ def create_vocab(jsonl_files: List[Path], output_dir: Path):
 
 
 @app.command()
-def train(config_file: str, output_dir: str, device: int=-1, local_rank: int=-1):
+def train(config_file: str, output_dir: str, device: str="cpu", local_rank: int=-1):
     with open(config_file) as f:
         config = json.load(f)
 
+    os.makedirs(output_dir, exist_ok=True)
     with open(os.path.join(output_dir, "config.json"), "w") as f:
         json.dump(config, f, indent=True, ensure_ascii=False)
 
