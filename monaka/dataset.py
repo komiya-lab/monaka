@@ -96,7 +96,7 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
             for line in f:
                 js = json.loads(line)
                 js["subwords"] = self.to_token_ids(js["tokens"], js["pos"] if self.pos_as_tokens else None)
-                js["input_ids"] = torch.tensor(js["subwords"]["input_ids"])
+                js["input_ids"] = torch.LongTensor(js["subwords"]["input_ids"])
                 js["label_ids"] = self.to_label_ids(js["labels"], js["subwords"].word_ids() if self.label_for_all_subwords else None)
                 if self.pos_dic:
                     js["pos_ids"] = self.to_pos_ids(js["pos"], js["subwords"].word_ids() if self.label_for_all_subwords else None) 
@@ -117,7 +117,7 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
             labels = labels_
         if len(labels) > self.max_length:
             labels = labels[:self.max_length]
-        return torch.tensor(labels)
+        return torch.LongTensor(labels)
     
 
     def to_pos_ids(self, labels: List[str], word_ids: Optional[List[int]]=None):
@@ -133,7 +133,7 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
                     labels.append(1) # padding index = 1
         else:
             labels = labels_
-        return torch.tensor(labels)
+        return torch.LongTensor(labels)
     
     def to_token_ids(self, tokens: List[str], pos: Optional[List[str]]=None):
         if pos is not None:
