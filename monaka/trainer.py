@@ -70,6 +70,15 @@ class Trainer:
         logger.info("loading train files")
         self.train_data = LUWJsonLDataset(train_files, **dataeset_options)
 
+        label_dic = self.train_data.label_dic
+        with open(os.path.join(output_dir, "labels.json"), "w") as f:
+            json.dump(label_dic, f, indent=True, ensure_ascii=False)
+
+        pos_dic = getattr(self.train_data, "pos_dic", None)
+        if pos_dic is not None:
+            with open(os.path.join(output_dir, "pos.json"), "w") as f:
+                json.dump(pos_dic, f, indent=True, ensure_ascii=False)
+
         logger.info("loading dev files")
         self.dev_data = LUWJsonLDataset(dev_files, **dataeset_options)
 
@@ -176,7 +185,9 @@ class Trainer:
 
             if test_loader:
                 logger.info("test evaluation")
-                self.evaluate(test_loader, device)
+                test_loss, test_acc = self.evaluate(test_loader, device)
+                writer.add_scalar("Loss/test", test_loss, total_itr)
+                writer.add_scalar("Acc/test", test_acc, total_itr)
             logger.info(f"{t}s elapsed\n")
 
         self.save(os.path.join(self.output_dir, f"last_at_{epoch}.pt"))
