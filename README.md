@@ -14,10 +14,10 @@ A Japanese parser (including support for historical Japanese)
 A dataset should be JSON-L formatted and its each line shoud contains following fields:
 ```json
     {
-        "sentence": str,   #
-        "tokens": [str, ]  # a list of SUW
-        "pos": [str, ]     # POS-tag labels for each SUW
-        "labels": [str, ]  # Target labels for each SUW
+        "sentence": "str", 
+        "tokens": ["a list of SUW", ],
+        "pos": ["POS-tag labels for each SUW", ],
+        "labels": ["Target labels for each SUW", ]
     }
 ```
 
