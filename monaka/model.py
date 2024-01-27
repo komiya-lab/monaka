@@ -12,6 +12,7 @@ from typing import Dict
 from monaka.module import MLP, LMEmbedding
 from monaka.mylogging import logger
 
+
 class LUWParserModel(nn.Module, Registrable):
 
     def __init__(self, *args, **kwargs) -> None:
