@@ -40,8 +40,8 @@ def train(config_file: str, output_dir: str, device: str="cpu", local_rank: int=
     with open(os.path.join(output_dir, "config.json"), "w") as f:
         json.dump(config, f, indent=True, ensure_ascii=False)
 
-    trainer = Trainer(**config)
-    trainer.train(output_dir, device, local_rank)
+    trainer = Trainer(output_dir=output_dir, **config)
+    trainer.train(device, local_rank)
 
 
 if __name__ == "__main__":

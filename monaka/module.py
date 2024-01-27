@@ -37,15 +37,13 @@ class AutoLMEmebedding(LMEmbedding):
             ScalarMixのdropout
         use_attentions (bool):
             attentionを出力するかどうか
-        max_len (int):
-            最大subword長 default 5120
    """
    
     def __init__(self, model: str, requires_grad: bool, use_scalar_mix: bool, sclar_mix_dropout:float = 0.1, use_attentions: bool=False) -> None:
         self.model = model
         self.requires_grad = requires_grad
         self.use_scalar_mix = use_scalar_mix
-        self.sclar_mix_dropout = sclar_mix_dropout
+        self.sclar_mix_dropout = use_scalar_mix
         self.use_attentions = use_attentions
 
         self.config = AutoConfig.from_pretrained(model, output_hidden_states=True,
@@ -61,12 +59,11 @@ class AutoLMEmebedding(LMEmbedding):
     def __repr__(self):
         s = f"{self.model}, n_out={self.n_out}"
         s += f", pad_index={self.pad_index}"
-        s += f", max_len={self.max_len}"
-        if self.mix_dropout > 0:
-            s += f", mix_dropout={self.mix_dropout}"
+        s += f", use_scalar_mix={self.use_scalar_mix}"
+        if self.sclar_mix_dropout > 0:
+            s += f", mix_dropout={self.sclar_mix_dropout}"
         if self.use_attentions:
             s += f", use_attentions={self.use_attentions}"
-        s += f", mask_token_id={self.mask_token_id}"
         if self.requires_grad:
             s += f", requires_grad={self.requires_grad}"
 
