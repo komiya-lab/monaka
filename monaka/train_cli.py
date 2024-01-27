@@ -95,6 +95,12 @@ def create_split(output_dir: Path, jsonl_files: List[Path], dev_ratio: float=0.0
             for line in tests:
                 f.write(line)
 
+
+@app.command()
+def ud2jsonl(conllufile: Path, output_file: Path):
+    pass
+
+
 if __name__ == "__main__":
     app()
 

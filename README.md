@@ -15,9 +15,9 @@ A dataset should be JSON-L formatted and its each line shoud contains following 
 ```json
     {
         "sentence": "str", 
-        "tokens": ["a list of SUW", ],
-        "pos": ["POS-tag labels for each SUW", ],
-        "labels": ["Target labels for each SUW", ]
+        "tokens": ["a list of SUW"],
+        "pos": ["POS-tag labels for each SUW"],
+        "labels": ["Target labels for each SUW"]
     }
 ```
 
