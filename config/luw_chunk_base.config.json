@@ -1,0 +1,35 @@
+{
+    "train_files": [""],
+    "dev_files": [""],
+    "test_files": null,
+    "dataeset_options" :{
+        "label_file": "vocab/labels.json",
+        "pos_file": "vocab/pos.json",
+        "lm_tokenizer": "bert-tohoku-ja",
+        "lm_tokenizer_config": {},
+        "pos_as_tokens": false,
+        "label_for_all_subwords": true,
+        "max_length": 512
+    },
+    "model_name": "SeqTagging",
+    "model_config": {
+        "n_pos_emb": 256,
+        "pos_dropout": 0.5,
+        "mlp_dropout": 0.5,
+        "lm_class_name": "AutoLM",
+        "lm_class_config": {
+            "model": "cl-tohoku/bert-base-japanese-whole-word-masking",
+            "requires_grad": true,
+            "use_scalar_mix": false,
+            "sclar_mix_dropout": 0.5,
+            "use_attentions": false
+        },
+        "pos_padding_idx": 1
+    },
+    "batch_size": 32,
+    "epochs": 50,
+    "lr": 2e-5,
+    "decay": 0.75,
+    "decay_steps": 5000,
+    "evaluate_step": 500
+}
