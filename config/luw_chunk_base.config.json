@@ -24,7 +24,8 @@
             "sclar_mix_dropout": 0.5,
             "use_attentions": false
         },
-        "pos_padding_idx": 1
+        "pos_padding_idx": 1,
+        "decoder": "LUW-Bunsetsu"
     },
     "batch_size": 32,
     "epochs": 50,

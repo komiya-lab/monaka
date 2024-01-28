@@ -1,4 +1,5 @@
 import os
+import conllu
 import typer
 import json
 import numpy as np
@@ -96,9 +97,26 @@ def create_split(output_dir: Path, jsonl_files: List[Path], dev_ratio: float=0.0
                 f.write(line)
 
 
+def udlabeling(token, method: str):
+    label = ""
+    if "bunsetsu" in method:
+        label += token["misc"]["BunsetuBILabel"]
+    if "luw" in method:
+        label += token["misc"]["LUWBILabel"]+token["misc"]["LUWPOS"]
+    return label
+
+
 @app.command()
-def ud2jsonl(conllufile: Path, output_file: Path):
-    pass
+def ud2jsonl(conllufile: Path, output_file: Path, labeling: str="luw-bunsetsu"):
+    with open(conllufile) as f, open(output_file, "w") as w:
+        for sent in conllu.parse_incr(f):
+            res = {
+                "sentence": sent.metadata["text"],
+                "tokens": [token["form"] for token in sent],
+                "pos": [token["xpos"] for token in sent],
+                "labels": [udlabeling(token, labeling) for token in sent]
+            }
+            print(json.dumps(res, ensure_ascii=False), file=w)
 
 
 if __name__ == "__main__":
