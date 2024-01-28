@@ -39,13 +39,14 @@ def train(config_file: str, output_dir: str, device: str="cpu", local_rank: int=
     with open(config_file) as f:
         config = json.load(f)
 
-    if train_files is not None:
+    print(train_files)
+    if train_files is not None and len(train_files) > 0:
         config["train_files"] = [str(t) for t in train_files]
 
-    if dev_files is not None:
+    if dev_files is not None and len(dev_files) > 0:
         config["dev_files"] = [str(t) for t in dev_files]
 
-    if test_files is not None:
+    if test_files is not None and len(test_files) > 0:
         config["test_files"] = [str(t) for t in test_files]
 
     os.makedirs(output_dir, exist_ok=True)
