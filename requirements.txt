@@ -1,0 +1,10 @@
+#torch==1.4.0
+conllu
+typer
+mecab-python3 
+fugashi[unidic]
+ipadic
+tqdm
+registrable
+transformers==4.35.0
+tensorboard
