@@ -29,6 +29,53 @@ Then, call parse command:
 monaka parse {model} 今日はいい天気ですね
 ```
 
+output:
+```json
+{
+  "tokens": [
+    "今日",
+    "は",
+    "いい",
+    "天気",
+    "です",
+    "ね"
+  ],
+  "pos": [
+    "名詞-普通名詞-副詞可能",
+    "助詞-係助詞",
+    "形容詞-非自立可能-形容詞",
+    "名詞-普通名詞-一般",
+    "助動詞-助動詞-デス",
+    "助詞-終助詞"
+  ],
+  "luw": [
+    "名詞-普通名詞-一般",
+    "助詞-係助詞",
+    "形容詞-一般-形容詞",
+    "名詞-普通名詞-一般",
+    "助動詞-助動詞-デス",
+    "助詞-終助詞"
+  ],
+  "chunk": [
+    "B",
+    "I",
+    "B",
+    "B",
+    "I",
+    "I"
+  ],
+  "sentence": "今日はいい天気ですね"
+}
+```
+
+You can specify output format ("bunsetsu-split" and "luw-split" )
+
+```sh
+monaka parse {model} 今日はいい天気ですね --output-format bunsetu-split
+
+今日は いい 天気ですね
+```
+
 ## Training monaka model
 
 ### LUW and Bunsetsu tokenizer/chunker
