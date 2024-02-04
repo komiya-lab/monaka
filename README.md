@@ -7,7 +7,7 @@ A Japanese parser (including support for historical Japanese)
 
 First, download  and install appropriate UniDic dictionary:
 ```sh
-monaka download wabu
+monaka download wabun
 ```
 
 Available dictionaries:
