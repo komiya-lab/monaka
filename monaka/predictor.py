@@ -87,7 +87,7 @@ class Encoder(Registrable):
         raise NotImplementedError
     
 
-@Encoder.register("pass")
+@Encoder.register("jsonl")
 class PassThrough(Encoder):
 
     def encode(self, tokens: List[str], pos: List[str], **kwargs) -> Any:
