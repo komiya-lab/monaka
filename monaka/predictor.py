@@ -9,8 +9,14 @@ import fugashi
 from typing import List, Dict, Any, Optional
 from registrable import Registrable
 
-from monaka.model import LUWParserModel, init_device, is_master
+from torch.utils.data import DataLoader
+from torch.nn.utils.rnn import pad_sequence
 
+from monaka.model import LUWParserModel, init_device, is_master
+from monaka.dataset import LUWJsonLDataset
+
+BASE_DIR = os.path.abspath(os.path.dirname(__file__)) # monaka dir
+RESC_DIR = os.path.join(BASE_DIR, "resource") # monaka/resource dir
 
 class Decoder(Registrable):
 
@@ -81,6 +87,15 @@ class Encoder(Registrable):
         raise NotImplementedError
     
 
+@Encoder.register("pass")
+class PassThrough(Encoder):
+
+    def encode(self, tokens: List[str], pos: List[str], **kwargs) -> Any:
+        r = {"tokens": tokens, "pos": pos}
+        r.update(kwargs)
+        return json.dumps(r, ensure_ascii=False)
+
+
 @Encoder.register("bunsetsu-split")
 class BunsetsuSplitter(Encoder):
 
@@ -91,7 +106,7 @@ class BunsetsuSplitter(Encoder):
             if c == "B":
                 if len(prv) > 0:
                     c_tokens.append(prv)
-                    prv = token
+                prv = token
             else:
                 prv += token
 
@@ -111,7 +126,8 @@ class LUWSplitter(Encoder):
             if c != "*":
                 if len(prv) > 0:
                     c_tokens.append(prv)
-                    prv = token
+                prv = token
+
             else:
                 prv += token
 
@@ -142,15 +158,35 @@ class SUWTokenizer(Registrable):
 class MecabSUWTokenizer(SUWTokenizer):
 
     def __init__(self, 
-        mecab_dic: Optional[str] = "ipadic",
-        mecab_option: Optional[str] = None) -> None:
+        dic: Optional[str] = "gendai") -> None:
         super().__init__()
 
-        mecab_option = mecab_option or ""
+        dicdir = os.path.join(RESC_DIR, dic)
+        mecabrc = os.path.join(RESC_DIR, "mecabrc")
+        mecab_option = f"-r {mecabrc} -d {dicdir}"
         self.mecab = fugashi.GenericTagger(mecab_option)
 
+    @staticmethod
+    def get_pos(feature):
+        res = list()
+        for feat in feature[:5]:
+            if "*" not in feat:
+                res.append(feat)
+        return "-".join(res)
+
+
     def tokenize(self, sentence: str) -> Dict:
-        return super().tokenize(sentence)
+        res = {
+            "sentence": sentence,
+            "tokens": [],
+            "pos": [],
+            "features": []
+        }
+        for word in self.mecab(sentence):
+            res["tokens"].append(word.surface)
+            res["pos"].append(self.get_pos(word.feature))
+            res["features"].append(word.feature)
+        return res
 
 
 class Predictor:
@@ -163,11 +199,17 @@ class Predictor:
 
         self.model = LUWParserModel.by_name(self.config["model_name"]).from_config(self.config["model_config"], **self.config["dataeset_options"])
         self.model.load_state_dict(torch.load(self.find_best_pt(model_dir)))
+        self.model.eval()
 
         self.decoder = Decoder.by_name(self.config["model_config"]["decoder"])()
 
         self.dataeset_options = self.config['dataeset_options']
         self.dataeset_options["label_file"] = os.path.join(model_dir, "labels.json")
+
+        with open(self.dataeset_options["label_file"]) as f:
+            self.label_dic = json.load(f)
+
+        self.inv_label_dic = {v:k for k, v in self.label_dic.items()}
 
         posfile = os.path.join(model_dir, "pos.json")
         if os.path.exists(posfile):
@@ -188,3 +230,43 @@ class Predictor:
                 idx = i
 
         return candidates[idx]
+    
+    def extract_labels(self, word_ids, labels):
+        res = list()
+        prv = -1
+        for wid, l in zip(word_ids, labels):
+            if wid is not None and wid >= 0:
+                if wid == prv:
+                    continue
+                res.append(self.inv_label_dic.get(l, "unk"))
+                wid = prv
+        return res
+
+    def predict(self, input: List[str], suw_tokenizer: str, suw_tokenizer_option: dict, encoder_name: str, batch_size: int = 8, device: str="cpu"):
+        encoder = Encoder.by_name(encoder_name)()
+        tokenizer = SUWTokenizer.by_name(suw_tokenizer)(**suw_tokenizer_option)
+
+        data = [tokenizer.tokenize(sent) for sent in input]
+        dataset = LUWJsonLDataset(data, **self.dataeset_options)
+        dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=LUWJsonLDataset.collate_function)
+
+
+        init_device(device)
+        self.model.to(device)
+
+
+        for data in dataloader:
+            word_ids = [sbw.word_ids() for sbw in data["subwords"]]
+            subwords = pad_sequence(data["input_ids"], batch_first=True, padding_value=dataset.pad_token_id).to(device)
+            pos_ids = pad_sequence(data["pos_ids"], batch_first=True, padding_value=1).to(device) if "pos_ids" in data else None
+
+            out = self.model(subwords, pos_ids)
+            pred = torch.argmax(out, dim=-1) # batch, len, 
+
+            pred_np = pred.detach().cpu().numpy()
+            for prd, wids, sentence, tokens, pos in zip(pred_np, word_ids, data["sentence"], data["tokens"], data["pos"]):
+                labels = self.extract_labels(wids, prd)
+                res = self.decoder.decode(tokens, pos, labels)
+                res["sentence"] = sentence
+                yield encoder.encode(**res)
+

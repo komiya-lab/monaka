@@ -5,6 +5,30 @@ A Japanese parser (including support for historical Japanese)
 
 ## Parse
 
+First, download  and install appropriate UniDic dictionary:
+```sh
+monaka download wabu
+```
+
+Available dictionaries:
+| name | discription |
+|------|-------------|
+| gendai | 現代書き言葉 |
+| spoken | 現代話し言葉 |
+| novel | 近現代口語小説 |
+| qkana | 旧仮名口語 |
+| kindai | 近代文語 |
+| kinsei | 近世江戸口語 |
+| kyogen | 中世口語 |
+| wakan | 中世文語 |
+| wabun | 中古和文 |
+| manyo | 上代語 |
+
+Then, call parse command:
+```sh
+monaka parse {model} 今日はいい天気ですね
+```
+
 ## Training monaka model
 
 ### LUW and Bunsetsu tokenizer/chunker

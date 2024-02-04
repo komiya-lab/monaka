@@ -73,8 +73,11 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
             self.load(jsonlfiles)
         elif isinstance(jsonlfiles, list):
             for fname in jsonlfiles:
-                logger.info(f"loading {fname}")
-                self.load(fname)
+                if isinstance(fname, str):
+                    logger.info(f"loading {fname}")
+                    self.load(fname)
+                elif isinstance(fname, dict):
+                    self.load_dict(fname)
         
         logger.info(f"total {len(self.sentences)} sentences loaded.")
         super().__init__()
@@ -95,12 +98,15 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
         with open(jsonlfile) as f:
             for line in f:
                 js = json.loads(line)
-                js["subwords"] = self.to_token_ids(js["tokens"], js["pos"] if self.pos_as_tokens else None)
-                js["input_ids"] = torch.LongTensor(js["subwords"]["input_ids"])
-                js["label_ids"] = self.to_label_ids(js["labels"], js["subwords"].word_ids() if self.label_for_all_subwords else None)
-                if self.pos_dic:
-                    js["pos_ids"] = self.to_pos_ids(js["pos"], js["subwords"].word_ids() if self.label_for_all_subwords else None) 
-                self.sentences.append(js)
+                self.load_dict(js)
+
+    def load_dict(self, js: dict):
+        js["subwords"] = self.to_token_ids(js["tokens"], js["pos"] if self.pos_as_tokens else None)
+        js["input_ids"] = torch.LongTensor(js["subwords"]["input_ids"])
+        js["label_ids"] = self.to_label_ids(js["labels"], js["subwords"].word_ids() if self.label_for_all_subwords else None) if "labels" in js else None
+        if self.pos_dic:
+            js["pos_ids"] = self.to_pos_ids(js["pos"], js["subwords"].word_ids() if self.label_for_all_subwords else None) 
+        self.sentences.append(js)
 
     def to_label_ids(self, labels: List[str], word_ids: Optional[List[int]]=None):
         labels_ = [self.label_dic.get(k, 0) for k in labels]
