@@ -32,7 +32,7 @@ class LUWParserModel(nn.Module, Registrable):
 
         return cls(**config)
 
-    def forward(self, words: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
+    def forward(self, words: torch.Tensor, word_ids: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError
     
     def loss(self, out, labels, mask) -> torch.Tensor:
@@ -94,7 +94,7 @@ class SeqTaggingParserModel(LUWParserModel):
 
         self.criterion = nn.CrossEntropyLoss()
 
-    def forward(self, words: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
+    def forward(self, words: torch.Tensor, word_ids: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
         """
         words: [batch, words_len]
         pos: [batch, owrds_len]
@@ -111,6 +111,116 @@ class SeqTaggingParserModel(LUWParserModel):
 
         out = self.m_out(words_emb)
 
+        return out # batch, words_len, n_class
+    
+    def loss(self, out: torch.Tensor, labels: torch.Tensor, mask: torch.Tensor):
+        """
+        out: [batch, words_len, n_class]
+        labels: [batch, 1]
+        mask: mask
+        """
+
+        return self.criterion(out[mask], labels[mask])
+
+
+
+@LUWParserModel.register("WordTagging")
+class WordTaggingParserModel(LUWParserModel):
+    """
+    WordレベルでSequence Taggingするモデル
+
+    Args:
+        n_pos (int):
+            形態素の種類数。
+        n_pos_emb (int):
+            形態素埋め込み表現の次元数。
+        n_class (int):
+            クラスラベル数
+        pooling (str):
+            subword -> wordのpooling方法 (max, sum, attention)
+        pos_dropout (float):
+            pos埋め込みのdropout
+        mlp_dropout (float):
+            識別用のMLPのdropout
+        lm_class_name (str):
+            用いるlm class名 TrasformersのAutoConfig, AutoModelなどが上手く使えない場合は専用クラスが用意されている。
+        lm_class_config (dict):
+            lm_class用のconfig
+        pos_padding_idx (int):
+            pos埋め込みのpadding idx
+    """
+    
+    def __init__(self,
+            n_pos: int,
+            n_pos_emb: int,
+            n_class: int,
+            pooling: str,
+            pos_dropout: float,
+            mlp_dropout: float,
+            lm_class_name: str,
+            lm_class_config: Dict,
+            pos_padding_idx: int = 1,
+            **kwargs) -> None:
+        super().__init__(**kwargs)
+        
+        logger.info("Model: WordTagging")
+
+        self.n_pos = n_pos
+        self.n_pos_emb = n_pos_emb
+        self.n_class = n_class
+        self.pooling_name = pooling
+        self.pos_dropout = pos_dropout
+        self.lm_class_name = lm_class_name
+        self.lm_class_config = lm_class_config
+        self.pos_padding_idx = pos_padding_idx
+        
+        self.m_lm = LMEmbedding.by_name(lm_class_name)(**lm_class_config)
+        self.m_pos_emb = nn.Embedding(n_pos, n_pos_emb, pos_padding_idx) if n_pos > 0 and n_pos_emb > 0 else None
+        self.m_pos_dropout = nn.Dropout(pos_dropout) if self.m_pos_emb else None
+
+        if "max" in pooling:
+            self.pooling = self.max
+        elif "sum" in pooling:
+            self.pooling = torch.sum
+        else:
+            self.pooling = None
+
+        self.n_in = self.m_lm.n_out if self.m_pos_emb is None else self.m_lm.n_out + n_pos_emb
+        self.m_out = MLP(self.n_in, n_class, mlp_dropout)
+
+        self.criterion = nn.CrossEntropyLoss()
+
+    @staticmethod
+    def max(value):
+        return torch.max(value).values
+
+    def forward(self, words: torch.Tensor, word_ids: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
+        """
+        words: [batch, words_len]
+        pos: [batch, owrds_len]
+        """
+        #print(words.size())
+        words_emb = self.m_lm(words)
+
+        we = list()
+        for i in range(torch.max(word_ids)+1):
+            mask = torch.cat([word_ids.eq(i).unsqueeze(-1) for _ in range(words_emb.size()[-1])], dim=2)
+            #print(words_emb.size())
+            #print(mask.size())
+            _o = words_emb * mask # batch, num of subwords in a word, hidden (acctually masked zero)
+            we.append(self.pooling(_o, 1, keepdim=True)) # batch, 1, hidden
+
+        words_emb = torch.cat(we, 1)
+
+        if self.m_pos_emb:
+            #print(pos)
+            pos_embs = self.m_pos_emb(pos)
+            pos_embs = self.m_pos_dropout(pos_embs)
+            #print(words_emb.size())
+            #print(pos_embs.size())
+            words_emb = torch.cat((words_emb, pos_embs), dim=-1) # batch, words_len, hidden
+
+        out = self.m_out(words_emb) # batch, len, hidden
         return out # batch, words_len, n_class
     
     def loss(self, out: torch.Tensor, labels: torch.Tensor, mask: torch.Tensor):

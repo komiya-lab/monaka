@@ -155,11 +155,12 @@ class Trainer:
 
             for i, data in tqdm.tqdm(enumerate(train_loader)):
                 subwords = pad_sequence(data["input_ids"], batch_first=True, padding_value=self.train_data.pad_token_id).to(device)
+                word_ids = pad_sequence([torch.LongTensor(js.word_ids()) for js in data["subwords"]], batch_first=True, padding_value=-1).to(device)
                 label_ids = pad_sequence(data["label_ids"], batch_first=True, padding_value=1).to(device)
                 pos_ids = pad_sequence(data["pos_ids"], batch_first=True, padding_value=1).to(device) if "pos_ids" in data else None
                 mask = label_ids.ne(1)
 
-                out = self.model(subwords, pos_ids)
+                out = self.model(subwords, word_ids, pos_ids)
                 loss = self.model.loss(out, label_ids, mask)
                 writer.add_scalar("Loss/train", loss, total_itr + i)
                 loss.backward()
@@ -201,11 +202,12 @@ class Trainer:
         self.model.eval()
         for data in dataloader:
                 subwords = pad_sequence(data["input_ids"], batch_first=True, padding_value=self.train_data.pad_token_id).to(device)
+                word_ids = pad_sequence([torch.LongTensor(js.word_ids()) for js in data["subwords"]], batch_first=True, padding_value=-1).to(device)
                 label_ids = pad_sequence(data["label_ids"], batch_first=True, padding_value=1).to(device)
                 pos_ids = pad_sequence(data["pos_ids"], batch_first=True, padding_value=1).to(device) if "pos_ids" in data else None
                 mask = label_ids.ne(1)
 
-                out = self.model(subwords, pos_ids)
+                out = self.model(subwords, word_ids, pos_ids)
                 loss += self.model.loss(out, label_ids, mask).detach().cpu().item()
                 pred = torch.argmax(out, dim=-1)
                 correct += ((pred == label_ids) & mask).sum().detach().cpu().item()

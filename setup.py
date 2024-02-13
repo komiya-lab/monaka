@@ -20,10 +20,13 @@ setuptools.setup(
         "Topic :: Text Processing :: Linguistic",
         "Natural Language :: Japanese",
     ],
+    package_data={
+        "monaka":["./resource/mecabrc"],
+    },
     entry_points={
         "console_scripts":[
-            "monaka_train=monaka.train_cli:app [Train]"
-            "monaka=monaka.cli:app"
+            "monaka_train = monaka.train_cli:app",
+            "monaka = monaka.cli:app"
         ],
     },
     project_urls={
