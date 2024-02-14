@@ -39,12 +39,14 @@ class AutoLMEmebedding(LMEmbedding):
             attentionを出力するかどうか
    """
    
-    def __init__(self, model: str, requires_grad: bool, use_scalar_mix: bool, sclar_mix_dropout:float = 0.1, use_attentions: bool=False) -> None:
+    def __init__(self, model: str, requires_grad: bool, use_scalar_mix: bool, sclar_mix_dropout:float = 0.1, use_attentions: bool=False,
+                max_length: int=512) -> None:
         self.model = model
         self.requires_grad = requires_grad
         self.use_scalar_mix = use_scalar_mix
         self.sclar_mix_dropout = use_scalar_mix
         self.use_attentions = use_attentions
+        self.max_length = max_length
 
         self.config = AutoConfig.from_pretrained(model, output_hidden_states=True,
                                                     output_attentions=use_attentions)

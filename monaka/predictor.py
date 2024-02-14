@@ -72,6 +72,43 @@ class LUWChunkDecoder(Decoder):
         return res
     
 
+@Decoder.register("comainu")
+class ComainuDecoder(Decoder):
+
+    def decode(self, tokens: List[str], pos: List[str], labels: List[str], **kwargs) -> Dict:
+        """
+        labelsが以下の形式の場合に利用する Comainu方式
+        (B or I)(B or I)(a)
+        """
+        luw = list()
+        chunk = list()
+        prv = -1
+        for l, p in zip(labels, pos):
+            if l in ["unk", "pad"]:
+                chunk.append("B")
+                luw.append(p)
+            else:
+                chunk.append(l[0])
+                if l[1] == "B":
+                    luw.append(p)
+                    prv = len(luw) -1
+                elif l[1:] == "Ia":
+                    if prv > 0:
+                        luw[prv] = p
+                    luw.append("*")
+                else:
+                    luw.append("*")
+        res = {
+            "tokens": tokens,
+            "pos": pos,
+            "luw": luw,
+            "chunk": chunk
+        }
+        res.update(kwargs)
+
+        return res
+
+
 class Encoder(Registrable):
 
     def __init__(self) -> None:

@@ -210,8 +210,11 @@ class Trainer:
                 out = self.model(subwords, word_ids, pos_ids)
                 loss += self.model.loss(out, label_ids, mask).detach().cpu().item()
                 pred = torch.argmax(out, dim=-1)
-                correct += ((pred == label_ids) & mask).sum().detach().cpu().item()
-                length += (mask).sum().detach().cpu().item()
+                try:
+                    correct += ((pred == label_ids) & mask).sum().detach().cpu().item()
+                    length += (mask).sum().detach().cpu().item()
+                except:
+                    logger.info(f"evaluation skipped: {data['sentence']}")
         logger.info(f"accuracy: {correct/length*100}, loss: {loss}")
         self.model.train(True)
         return loss, correct/length

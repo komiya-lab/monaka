@@ -100,6 +100,11 @@ def create_split(output_dir: Path, jsonl_files: List[Path], dev_ratio: float=0.0
 
 def udlabeling(token, method: str):
     label = ""
+    if "comainu" in method:
+        label += token["misc"]["BunsetuBILabel"] + token["misc"]["LUWBILabel"]
+        if token["xpos"] in token["misc"]["LUWPOS"]:
+            label += "a"
+        return label
     if "bunsetsu" in method:
         label += token["misc"]["BunsetuBILabel"]
     if "luw" in method:

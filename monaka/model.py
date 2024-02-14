@@ -191,24 +191,26 @@ class WordTaggingParserModel(LUWParserModel):
         self.criterion = nn.CrossEntropyLoss()
 
     @staticmethod
-    def max(value):
-        return torch.max(value).values
+    def max(value, **kwargs):
+        return torch.max(value, **kwargs).values
 
     def forward(self, words: torch.Tensor, word_ids: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
         """
-        words: [batch, words_len]
-        pos: [batch, owrds_len]
+        words: [batch, subwords_len]
+        word_ids: [batch, subword_len] the indices pointing to original words
+        pos: [batch, words_len]
         """
         #print(words.size())
         words_emb = self.m_lm(words)
 
         we = list()
         for i in range(torch.max(word_ids)+1):
-            mask = torch.cat([word_ids.eq(i).unsqueeze(-1) for _ in range(words_emb.size()[-1])], dim=2)
+            wi = word_ids.eq(i).unsqueeze(-1)
+            mask = torch.cat([wi for _ in range(words_emb.size()[-1])], dim=2)
             #print(words_emb.size())
             #print(mask.size())
             _o = words_emb * mask # batch, num of subwords in a word, hidden (acctually masked zero)
-            we.append(self.pooling(_o, 1, keepdim=True)) # batch, 1, hidden
+            we.append(self.pooling(_o, dim=1, keepdim=True)) # batch, 1, hidden
 
         words_emb = torch.cat(we, 1)
 
@@ -229,6 +231,9 @@ class WordTaggingParserModel(LUWParserModel):
         labels: [batch, 1]
         mask: mask
         """
+        out_size = out.size()
+        mask = mask[:out_size[0], :out_size[1]]
+        labels = labels[:out_size[0], :out_size[1]]
 
         return self.criterion(out[mask], labels[mask])
 

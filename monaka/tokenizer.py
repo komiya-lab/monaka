@@ -16,7 +16,7 @@ class Tokenizer(Registrable):
         super().__init__()
 
     def tokenize(self, words, max_length=None):
-        tokens = self.lm_tokenizer(words, is_split_into_words=True, add_special_tokens=self.add_special_tokens, max_length=max_length)
+        tokens = self.lm_tokenizer(words, is_split_into_words=True, add_special_tokens=self.add_special_tokens, max_length=max_length, truncation=True)
         return tokens
     
 

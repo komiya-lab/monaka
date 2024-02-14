@@ -3,7 +3,6 @@ import sys
 import typer
 import json
 import enum
-from tqdm import tqdm
 
 from pathlib import Path
 from typing import List, Optional
@@ -27,18 +26,21 @@ UNIDIC_URLS = {
     "wabun": UNIDIC_URL + "2203/UniDic-202203_20_chuko.zip",
     "manyo": UNIDIC_URL + "2203/UniDic-202203_10_jodai.zip"
 }
-pbar: Optional[tqdm] = None
+"""
+pbar: Optional[typer.progressbar] = None
 
 def _progress(block_count: int, block_size: int, total_size: int):
     global pbar
     if pbar is None:
-        pbar = tqdm(total=total_size)
+        pbar = typer.progressbar(length=total_size)#tqdm(total=total_size)
     else:
         size = block_size * block_count
         pbar.update(size)
         # reset global bar
-        if pbar.total == total_size:
-            pbar = None
+        #if pbar.
+        #    pbar = None
+"""
+prv = 0
 
 @app.command()
 def download(target: str, dtype: DownloadType = typer.Option(DownloadType.UniDic, case_sensitive=False)):
@@ -47,15 +49,26 @@ def download(target: str, dtype: DownloadType = typer.Option(DownloadType.UniDic
     import zipfile
     import glob
     import shutil
+    global prv
 
     if dtype == DownloadType.UniDic:
         if target not in UNIDIC_URLS:
             print(f"target: {target} is not in the UniDic dictionary name list.", file=sys.stderr)
         else:
+            print(f"Downloading {target} UniDic dictionary...")
             url = UNIDIC_URLS[target]
-            fstr, msg = urllib.request.urlretrieve(url, reporthook=_progress)
+            prv = 0
+            with typer.progressbar(length=1000, width=64, color=True) as pbar:
+                def _progress(block_count: int, block_size: int, total_size: int):
+                    global prv
+                    size = block_size * block_count
+                    val = int(size/total_size*1000)
+                    pbar.update(val - prv)
+                    prv = val
+                fstr, msg = urllib.request.urlretrieve(url, reporthook=_progress)
             temp_path = os.path.join(RESC_DIR,".temporary")
 
+            print(f"Extracting {target} UniDic dictionary...")
             with zipfile.ZipFile(fstr) as z:
                 z.extractall(temp_path)
 
