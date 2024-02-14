@@ -5,6 +5,7 @@ import glob
 import json
 import torch
 import fugashi
+import numpy as np
 
 from typing import List, Dict, Any, Optional
 from registrable import Registrable
@@ -14,6 +15,7 @@ from torch.nn.utils.rnn import pad_sequence
 
 from monaka.model import LUWParserModel, init_device, is_master
 from monaka.dataset import LUWJsonLDataset
+from monaka.metric import MetricReporter
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__)) # monaka dir
 RESC_DIR = os.path.join(BASE_DIR, "resource") # monaka/resource dir
@@ -64,8 +66,8 @@ class LUWChunkDecoder(Decoder):
         res = {
             "tokens": tokens,
             "pos": pos,
-            "luw": luw,
-            "chunk": chunk
+            "luw": luw[:len(tokens)],
+            "chunk": chunk[:len(tokens)]
         }
         res.update(kwargs)
 
@@ -270,6 +272,8 @@ class Predictor:
     
     def extract_labels(self, word_ids, labels):
         res = list()
+        if word_ids is None:
+            return [self.inv_label_dic.get(l, "unk") for l in labels]
         prv = -1
         for wid, l in zip(word_ids, labels):
             if wid is not None and wid >= 0:
@@ -293,7 +297,7 @@ class Predictor:
 
 
         for data in dataloader:
-            word_ids = [sbw.word_ids() for sbw in data["subwords"]]
+            #word_ids = [sbw.word_ids() for sbw in data["subwords"]]
             subwords = pad_sequence(data["input_ids"], batch_first=True, padding_value=dataset.pad_token_id).to(device)
             word_ids = pad_sequence([torch.LongTensor(js.word_ids()) for js in data["subwords"]], batch_first=True, padding_value=-1).to(device)
             pos_ids = pad_sequence(data["pos_ids"], batch_first=True, padding_value=1).to(device) if "pos_ids" in data else None
@@ -303,8 +307,48 @@ class Predictor:
 
             pred_np = pred.detach().cpu().numpy()
             for prd, wids, sentence, tokens, pos in zip(pred_np, word_ids, data["sentence"], data["tokens"], data["pos"]):
-                labels = self.extract_labels(wids, prd)
+                if not dataset.label_for_all_subwords:
+                    labels = self.extract_labels(None, prd)
+                else:
+                    labels = self.extract_labels(wids, prd)
                 res = self.decoder.decode(tokens, pos, labels)
                 res["sentence"] = sentence
                 yield encoder.encode(**res)
 
+    def evaluate(self, inputfile: str, batch_size: int = 8, device: str="cpu", targets: List[str]=("luw", "chunk")):
+
+        dataset = LUWJsonLDataset(inputfile, **self.dataeset_options)
+        dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=LUWJsonLDataset.collate_function)
+
+        init_device(device)
+        self.model.to(device)
+
+        reporters = {name: MetricReporter(name) for name in targets}
+
+
+        for data in dataloader:
+            subwords = pad_sequence(data["input_ids"], batch_first=True, padding_value=dataset.pad_token_id).to(device)
+            word_ids = pad_sequence([torch.LongTensor(js.word_ids()) for js in data["subwords"]], batch_first=True, padding_value=-1).to(device)
+            pos_ids = pad_sequence(data["pos_ids"], batch_first=True, padding_value=1).to(device) if "pos_ids" in data else None
+
+            out = self.model(subwords, word_ids, pos_ids)
+            pred = torch.argmax(out, dim=-1) # batch, len, 
+
+            pred_np = pred.detach().cpu().numpy()
+            for prd, wids, sentence, tokens, pos, gold in zip(pred_np, word_ids, data["sentence"], data["tokens"], data["pos"], data["labels"]):
+                if not dataset.label_for_all_subwords:
+                    labels = self.extract_labels(None, prd)
+                else:
+                    labels = self.extract_labels(wids, prd)
+                res = self.decoder.decode(tokens, pos, labels)
+                gres = self.decoder.decode(tokens, pos, gold)
+
+                if np.random.random() < 0.02:
+                    print("gold", gres)
+                    print("pred", res)
+                for target in targets:
+                    rep = reporters[target]
+                    rep.update(gres[target], res[target])
+
+        for rep in reporters.values():
+            rep.pretty()

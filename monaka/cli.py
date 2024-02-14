@@ -95,5 +95,10 @@ def parse(model_dir: Path, inputs: List[str], device: str="cpu", batch: int=8, o
         print(r)
     
 
+@app.command()
+def evaluate(model_dir, inputfile: str, device: str="cpu", batch: int=8, targets: List[str]=("luw", "chunk")):
+    predictor = Predictor(model_dir=model_dir)
+    predictor.evaluate(inputfile, batch_size=batch, device=device, targets=targets)
+
 if __name__ == "__main__":
     app()
