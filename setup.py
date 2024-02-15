@@ -38,7 +38,8 @@ setuptools.setup(
         "registrable",
         "mecab-python3",
         "fugashi",
-        "ipadic"
+        "ipadic",
+        "prettytable"
     ],
     extras_require={
         "Train": [

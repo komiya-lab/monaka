@@ -58,6 +58,30 @@ def train(config_file: str, output_dir: str, device: str="cpu", local_rank: int=
 
 
 @app.command()
+def train_cv(config_file: str, output_dir: str, device: str="cpu", local_rank: int=-1):
+    with open(config_file) as f:
+        config = json.load(f)
+
+    train_files = config["train_files"]
+    dev_files = config["dev_files"]
+    test_files = config["test_files"] 
+
+    for i, (train_, dev, test) in enumerate(zip(train_files, dev_files, test_files)):
+        print(f"cv_{i}")
+        config["train_files"] = [train_]
+        config["dev_files"] = [dev]
+        config["test_files"] = [test]
+
+        cvdir = os.path.join(output_dir, f"cv_{i}")
+        os.makedirs(cvdir, exist_ok=True)
+        with open(os.path.join(cvdir, "config.json"), "w") as f:
+            json.dump(config, f, indent=True, ensure_ascii=False)
+
+        trainer = Trainer(output_dir=cvdir, **config)
+        trainer.train(device, local_rank)
+
+
+@app.command()
 def create_split(output_dir: Path, jsonl_files: List[Path], dev_ratio: float=0.05, test_ratio: float=0.05, folds: int=5):
     os.makedirs(output_dir, exist_ok=True)
     used = list()

@@ -6,6 +6,7 @@ import enum
 
 from pathlib import Path
 from typing import List, Optional
+from rich.progress import Progress
 from monaka.predictor import Predictor, RESC_DIR
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
@@ -26,20 +27,6 @@ UNIDIC_URLS = {
     "wabun": UNIDIC_URL + "2203/UniDic-202203_20_chuko.zip",
     "manyo": UNIDIC_URL + "2203/UniDic-202203_10_jodai.zip"
 }
-"""
-pbar: Optional[typer.progressbar] = None
-
-def _progress(block_count: int, block_size: int, total_size: int):
-    global pbar
-    if pbar is None:
-        pbar = typer.progressbar(length=total_size)#tqdm(total=total_size)
-    else:
-        size = block_size * block_count
-        pbar.update(size)
-        # reset global bar
-        #if pbar.
-        #    pbar = None
-"""
 prv = 0
 
 @app.command()
@@ -58,12 +45,14 @@ def download(target: str, dtype: DownloadType = typer.Option(DownloadType.UniDic
             print(f"Downloading {target} UniDic dictionary...")
             url = UNIDIC_URLS[target]
             prv = 0
-            with typer.progressbar(length=1000, width=64, color=True) as pbar:
+            #with typer.progressbar(length=1000, width=64, color=True) as pbar:
+            with Progress() as progress:
+                task = progress.add_task("[red]Downloading...", total=1000)
                 def _progress(block_count: int, block_size: int, total_size: int):
                     global prv
                     size = block_size * block_count
                     val = int(size/total_size*1000)
-                    pbar.update(val - prv)
+                    progress.update(task, advance=val - prv)
                     prv = val
                 fstr, msg = urllib.request.urlretrieve(url, reporthook=_progress)
             temp_path = os.path.join(RESC_DIR,".temporary")

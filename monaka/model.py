@@ -94,7 +94,7 @@ class SeqTaggingParserModel(LUWParserModel):
 
         self.criterion = nn.CrossEntropyLoss()
 
-    def forward(self, words: torch.Tensor, word_ids: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
+    def forward(self, words: torch.Tensor, word_ids: torch.Tensor, pos: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         """
         words: [batch, words_len]
         pos: [batch, owrds_len]
@@ -194,7 +194,7 @@ class WordTaggingParserModel(LUWParserModel):
     def max(value, **kwargs):
         return torch.max(value, **kwargs).values
 
-    def forward(self, words: torch.Tensor, word_ids: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
+    def forward(self, words: torch.Tensor, word_ids: torch.Tensor, pos: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         """
         words: [batch, subwords_len]
         word_ids: [batch, subword_len] the indices pointing to original words
@@ -204,9 +204,13 @@ class WordTaggingParserModel(LUWParserModel):
         words_emb = self.m_lm(words)
 
         we = list()
-        for i in range(torch.max(word_ids)+1):
+        if torch.max(word_ids)+1 != pos.size()[-1]:
+            print(torch.max(word_ids, dim=1))
+        L = torch.max(word_ids) + 1 if not self.m_pos_emb else pos.size()[-1] # なぜかPOSが多い時がある。調査要
+
+        for i in range(L):
             wi = word_ids.eq(i).unsqueeze(-1)
-            mask = torch.cat([wi for _ in range(words_emb.size()[-1])], dim=2)
+            mask = torch.cat([wi for _ in range(words_emb.size()[-1])], dim=-1)
             #print(words_emb.size())
             #print(mask.size())
             _o = words_emb * mask # batch, num of subwords in a word, hidden (acctually masked zero)

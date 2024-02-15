@@ -101,6 +101,9 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
                 self.load_dict(js)
 
     def load_dict(self, js: dict):
+        if len(js["pos"]) != len(js["tokens"]):
+            logger.warn(f'skip loading {js["sentence"]} because of pos {len(js["pos"])} and token {len(js["tokens"])} length unmatch')
+            return
         js["subwords"] = self.to_token_ids(js["tokens"], js["pos"] if self.pos_as_tokens else None)
         js["input_ids"] = torch.LongTensor(js["subwords"]["input_ids"])
         js["label_ids"] = self.to_label_ids(js["labels"], js["subwords"].word_ids() if self.label_for_all_subwords else None) if "labels" in js else None
@@ -139,6 +142,8 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
                     labels.append(1) # padding index = 1
         else:
             labels = labels_
+        if len(labels) > self.max_length:
+            labels = labels[:self.max_length]
         return torch.LongTensor(labels)
     
     def to_token_ids(self, tokens: List[str], pos: Optional[List[str]]=None):
