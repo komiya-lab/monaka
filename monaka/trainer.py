@@ -2,6 +2,7 @@
 
 import os
 import json
+import logging
 import datetime
 
 import torch
@@ -17,12 +18,14 @@ from torch.utils.tensorboard import SummaryWriter
 
 from typing import List, Optional, Union, Dict
 from monaka.dataset import LUWJsonLDataset
-from monaka.mylogging import logger, init_logger
+from monaka.mylogging import init_logger, get_logger
 from monaka.model import LUWParserModel, init_device, is_master
 from monaka.model import DistributedDataParallel as DDP
 
 import random
 import numpy as np
+
+logger = None
 
 def torch_fix_seed(seed=419):
     # Python random
@@ -60,9 +63,12 @@ class Trainer:
             output_dir: str="",
             **kwargs):
         
+        global logger
         os.makedirs(output_dir, exist_ok=True)
 
+        logger = get_logger(output_dir)
         init_logger(logger, f"{output_dir}/train.log", verbose=verbose)
+        logger.setLevel(logging.INFO)
         self.output_dir = output_dir
 
         logger.info("dataset options:")
