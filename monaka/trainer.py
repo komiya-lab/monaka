@@ -72,9 +72,10 @@ class Trainer:
 
         logger.info("dataset options:")
         logger.info(json.dumps(dataeset_options, indent=True, ensure_ascii=False))
-        dataeset_options["logger"] = logger
+        options = {"logger": logger}
+        options.update(dataeset_options)
         logger.info("loading train files")
-        self.train_data = LUWJsonLDataset(train_files, **dataeset_options)
+        self.train_data = LUWJsonLDataset(train_files, **options)
 
         label_dic = self.train_data.label_dic
         with open(os.path.join(output_dir, "labels.json"), "w") as f:
@@ -86,10 +87,10 @@ class Trainer:
                 json.dump(pos_dic, f, indent=True, ensure_ascii=False)
 
         logger.info("loading dev files")
-        self.dev_data = LUWJsonLDataset(dev_files, **dataeset_options)
+        self.dev_data = LUWJsonLDataset(dev_files, **options)
 
         logger.info("loading test files")
-        self.test_data = LUWJsonLDataset(test_files, **dataeset_options) if test_files else None
+        self.test_data = LUWJsonLDataset(test_files, **options) if test_files else None
 
         self.batch_size=batch_size
         self.epochs = epochs
