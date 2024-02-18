@@ -1,0 +1,37 @@
+{
+    "train_files": ["data/chj_heian/train.0.jsonl", "data/chj_heian/train.1.jsonl", "data/chj_heian/train.2.jsonl", "data/chj_heian/train.3.jsonl", "data/chj_heian/train.4.jsonl"],
+    "dev_files": ["data/chj_heian/dev.0.jsonl", "data/chj_heian/dev.1.jsonl", "data/chj_heian/dev.2.jsonl", "data/chj_heian/dev.3.jsonl", "data/chj_heian/dev.4.jsonl"],
+    "test_files": ["data/chj_heian/test.0.jsonl", "data/chj_heian/test.1.jsonl", "data/chj_heian/test.2.jsonl", "data/chj_heian/test.3.jsonl", "data/chj_heian/test.4.jsonl"],
+    "dataeset_options" :{
+        "label_file": "data/chj_luw_chunk_vocab/labels.json",
+        "pos_file": "data/chj_luw_chunk_vocab/pos.json",
+        "lm_tokenizer": "bert-tohoku-ja",
+        "lm_tokenizer_config": {},
+        "pos_as_tokens": false,
+        "label_for_all_subwords": false,
+        "max_length": 512
+    },
+    "model_name": "WordTagging",
+    "model_config": {
+        "n_pos_emb": 256,
+        "pooling": "sum",
+        "pos_dropout": 0.5,
+        "mlp_dropout": 0.5,
+        "lm_class_name": "AutoLM",
+        "lm_class_config": {
+            "model": "cl-tohoku/bert-base-japanese-whole-word-masking",
+            "requires_grad": true,
+            "use_scalar_mix": false,
+            "sclar_mix_dropout": 0.5,
+            "use_attentions": false
+        },
+        "pos_padding_idx": 1,
+        "decoder": "LUW-Bunsetsu"
+    },
+    "batch_size": 24,
+    "epochs": 20,
+    "lr": 5e-6,
+    "decay": 0.75,
+    "decay_steps": 5000,
+    "evaluate_step": 500
+}

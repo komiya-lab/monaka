@@ -66,13 +66,13 @@ class Trainer:
         global logger
         os.makedirs(output_dir, exist_ok=True)
 
-        logger = get_logger(output_dir)
-        init_logger(logger, f"{output_dir}/train.log", verbose=verbose)
-        logger.setLevel(logging.INFO)
+        logger = get_logger(f"monaka.trainer.{output_dir.replace('/', '.')}")
+        init_logger(logger, handlers=[logging.StreamHandler(), logging.FileHandler(f"{output_dir}/train.log", 'w')], verbose=verbose)
         self.output_dir = output_dir
 
         logger.info("dataset options:")
         logger.info(json.dumps(dataeset_options, indent=True, ensure_ascii=False))
+        dataeset_options["logger"] = logger
         logger.info("loading train files")
         self.train_data = LUWJsonLDataset(train_files, **dataeset_options)
 

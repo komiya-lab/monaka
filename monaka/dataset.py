@@ -3,6 +3,7 @@
 import json
 from collections import namedtuple
 
+import numpy as np
 import torch
 import torch.distributed as dist
 from typing import Union, List, Dict, Optional
@@ -49,7 +50,7 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
     """
 
     def __init__(self, jsonlfiles: Union[str, List[str]], label_file: str, pos_file: str, lm_tokenizer: str, lm_tokenizer_config: Dict, max_length: int=1024, pos_as_tokens: bool=False, 
-                 label_for_all_subwords: bool=False,
+                 label_for_all_subwords: bool=False, logger=logger,
                  **kwargs):
         self.sentences = list()
         self.tokenizer = Tokenizer.by_name(lm_tokenizer)(**lm_tokenizer_config)
@@ -58,6 +59,7 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
         self.label_for_all_subwords = label_for_all_subwords
         self.max_length = max_length
         self.jsonlfiles = jsonlfiles
+        self.logger = logger
 
         with open(label_file) as f:
             self.label_dic = json.load(f)
@@ -69,17 +71,17 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
             self.pos_dic = None
         
         if isinstance(jsonlfiles, str):
-            logger.info(f"loading {jsonlfiles}")
+            self.logger.info(f"loading {jsonlfiles}")
             self.load(jsonlfiles)
         elif isinstance(jsonlfiles, list):
             for fname in jsonlfiles:
                 if isinstance(fname, str):
-                    logger.info(f"loading {fname}")
+                    self.logger.info(f"loading {fname}")
                     self.load(fname)
                 elif isinstance(fname, dict):
                     self.load_dict(fname)
         
-        logger.info(f"total {len(self.sentences)} sentences loaded.")
+        self.logger.info(f"total {len(self.sentences)} sentences loaded.")
         super().__init__()
 
     @staticmethod
@@ -102,13 +104,25 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
 
     def load_dict(self, js: dict):
         if len(js["pos"]) != len(js["tokens"]):
-            logger.warn(f'skip loading {js["sentence"]} because of pos {len(js["pos"])} and token {len(js["tokens"])} length unmatch')
+            self.logger.warn(f'skip loading {js["sentence"]} because of pos {len(js["pos"])} and token {len(js["tokens"])} length unmatch')
             return
+        
+        if len(js["pos"]) == 0:
+            self.logger.warn(f'skip loading {js["sentence"]} because there is no token.')
+            return
+
         js["subwords"] = self.to_token_ids(js["tokens"], js["pos"] if self.pos_as_tokens else None)
         js["input_ids"] = torch.LongTensor(js["subwords"]["input_ids"])
         js["label_ids"] = self.to_label_ids(js["labels"], js["subwords"].word_ids() if self.label_for_all_subwords else None) if "labels" in js else None
         if self.pos_dic:
             js["pos_ids"] = self.to_pos_ids(js["pos"], js["subwords"].word_ids() if self.label_for_all_subwords else None) 
+
+        if len(js["subwords"].word_ids()) == 0:
+            self.logger.warn(f"no words: {js['tokens']}")
+            return
+
+        if len(js["pos"]) != np.max(js["subwords"].word_ids()) + 1:
+            self.logger.warn(f'unmatch length {len(js["pos"])} {np.max(js["subwords"].word_ids()) + 1}, {js["tokens"]} {js["subwords"]} {js["subwords"].word_ids()}')
         self.sentences.append(js)
 
     def to_label_ids(self, labels: List[str], word_ids: Optional[List[int]]=None):
@@ -149,11 +163,28 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
     def to_token_ids(self, tokens: List[str], pos: Optional[List[str]]=None):
         if pos is not None:
             assert(len(tokens) == len(pos))
-            targets = [f"{t} {p}" for t, p in zip(tokens, pos)]
+            targets = [f"{self.replace_token(t)} {p}" for t, p in zip(tokens, pos)]
         else:
-            targets = tokens
+            targets = [self.replace_token(t) for t in tokens]
 
         return self.tokenizer.tokenize(targets, max_length=self.max_length)
+
+    @staticmethod
+    def replace_token(token: str) -> str:
+        """うまくtokenizeできない句点記号を置換する"""
+        if token in ["．", "："]:
+            return "。"
+        if token in ["，", "；"]:
+            return "、"
+        if token in ["？"]:
+            return "?"
+        if token in ["！"]:
+            return "!"
+        if token in ["（"]:
+            return "("
+        if token in ["）"]:
+            return ")"
+        return token
 
     def __repr__(self):
         s = f"{self.__class__.__name__}("

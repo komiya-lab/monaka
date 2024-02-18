@@ -25,6 +25,7 @@ class AutoLMTokenizer(Tokenizer):
     
     def __init__(self, name: str, add_special_tokens=False, **kwargs) -> None:
         lm_tokenizer = AutoTokenizer.from_pretrained(name)
+        lm_tokenizer.clean_up_tokenization_spaces = False
         super().__init__(lm_tokenizer, add_special_tokens)
 
 
@@ -49,9 +50,9 @@ try:
 
     class BertMecabTokenizerFast(BertTokenizerFast):
 
-        def __init__(self,vocab_file,do_lower_case=False,tokenize_chinese_chars=False,**kwargs):
+        def __init__(self, vocab_file, do_lower_case=False, tokenize_chinese_chars=False, clean_up_tokenization_spaces=False, **kwargs):
             from tokenizers.pre_tokenizers import PreTokenizer,BertPreTokenizer,Sequence
-            super().__init__(vocab_file=vocab_file,do_lower_case=do_lower_case,tokenize_chinese_chars=tokenize_chinese_chars,**kwargs)
+            super().__init__(vocab_file=vocab_file,do_lower_case=do_lower_case,tokenize_chinese_chars=tokenize_chinese_chars,clean_up_tokenization_spaces=clean_up_tokenization_spaces, **kwargs)
             d=kwargs["mecab_kwargs"] if "mecab_kwargs" in kwargs else {"mecab_dic":"ipadic"}
             self._tokenizer.pre_tokenizer=Sequence([PreTokenizer.custom(MecabPreTokenizer(**d)),BertPreTokenizer()])
 
