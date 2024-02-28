@@ -149,6 +149,26 @@ def ud2jsonl(conllufile: Path, output_file: Path, labeling: str="luw-bunsetsu"):
             print(json.dumps(res, ensure_ascii=False), file=w)
 
 
+@app.command()
+def delete_old_bests(model_dir: Path):
+    import glob
+
+    candidates = list()
+    longest = -1
+    idx = -1
+    for i, fname in enumerate(glob.glob(os.path.join(model_dir, "best_at_*.pt"))):
+            candidates.append(fname)
+            base = os.path.basename(fname)
+            epoch = base.split("_")[2]
+            epoch = int(epoch.split(".")[0])
+            if longest < epoch:
+                longest = epoch
+                idx = i
+    best = candidates[idx]
+    for cand in candidates:
+        if cand != best:
+            os.remove(cand)
+
 if __name__ == "__main__":
     app()
 
