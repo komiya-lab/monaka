@@ -293,6 +293,10 @@ class Predictor:
 
 
         init_device(device)
+        try:
+            device = int(device)
+        except:
+            pass
         self.model.to(device)
 
 
@@ -321,6 +325,10 @@ class Predictor:
         dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=LUWJsonLDataset.collate_function)
 
         init_device(device)
+        try:
+            device = int(device)
+        except:
+            pass
         self.model.to(device)
 
         reporters = {name: MetricReporter(name) for name in targets}

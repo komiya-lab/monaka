@@ -140,6 +140,10 @@ class Trainer:
         init_device(str(device), local_rank)
         if dist.is_initialized():
             self.batch_size = self.batch_size // dist.get_world_size()
+        try:
+            device = int(device)
+        except:
+            pass
         self.model.to(device)
 
         optimizer = Adam(self.model.parameters(),
