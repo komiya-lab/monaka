@@ -204,7 +204,7 @@ class WordTaggingParserModel(LUWParserModel):
         words_emb = self.m_lm(words)
 
         we = list()
-        if torch.max(word_ids)+1 != pos.size()[-1]:
+        if self.m_pos_emb and torch.max(word_ids)+1 != pos.size()[-1]:
             print(torch.max(word_ids, dim=1))
         L = torch.max(word_ids) + 1 if not self.m_pos_emb else pos.size()[-1] # なぜかPOSが多い時がある。調査要
 

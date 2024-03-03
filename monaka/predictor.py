@@ -280,7 +280,7 @@ class Predictor:
                 if wid == prv:
                     continue
                 res.append(self.inv_label_dic.get(l, "unk"))
-                wid = prv
+                prv = wid
         return res
 
     def predict(self, input: List[str], suw_tokenizer: str, suw_tokenizer_option: dict, encoder_name: str, batch_size: int = 8, device: str="cpu"):

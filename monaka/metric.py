@@ -15,9 +15,9 @@ class MetricReporter:
         self.s = 0
 
     def update(self, golds: List[Any], systems: List[Any]):
+        self.g += len(golds)
+        self.s += len(systems)
         for g, s in zip(golds, systems):
-            self.g += 1
-            self.s += 1
             if g == s:
                 self.c += 1
 
