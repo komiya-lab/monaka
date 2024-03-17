@@ -38,3 +38,11 @@ class MetricReporter:
         table = PrettyTable(field_names=keys)
         table.add_row([js[k] for k in keys])
         print(table)
+
+class SpanBasedMetricReporter(MetricReporter):
+
+    def update(self, golds: List[Any], systems: List[Any]):
+        self.g += len(golds)
+        self.s += len(systems)
+        correct = [1 for g in golds if g in systems]
+        self.c += len(correct)

@@ -15,7 +15,7 @@ from torch.nn.utils.rnn import pad_sequence
 
 from monaka.model import LUWParserModel, init_device, is_master
 from monaka.dataset import LUWJsonLDataset
-from monaka.metric import MetricReporter
+from monaka.metric import MetricReporter, SpanBasedMetricReporter
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__)) # monaka dir
 RESC_DIR = os.path.join(BASE_DIR, "resource") # monaka/resource dir
@@ -126,12 +126,58 @@ class Encoder(Registrable):
         raise NotImplementedError
     
 
+def append_spans(data):
+    start = 0
+    data["suw_span"] = []
+    for token in data["tokens"]:
+        data["suw_span"].append((start, start+len(token)))
+        start += len(token)
+
+    data["luw_span"] = []
+    data["chunk_span"] = []
+
+    luw_start = -1
+    luw_end = -1
+    luw_type = None
+    chunk_start = -1
+    chunk_end = -1
+    for span, luw, chunk in zip(data["suw_span"], data["luw"], data["chunk"]):
+        if luw_start < 0:
+            luw_start = span[0]
+            luw_end = span[1]
+            chunk_start = span[0]
+            chunk_end = span[1]
+            luw_type = luw
+            continue
+        if "*" in luw:
+            luw_end = span[1]
+        else:
+            data["luw_span"].append((luw_start, luw_end, luw_type))
+            luw_start = span[0]
+            luw_end = span[1]
+            luw_type = luw
+        
+        if "I" in chunk:
+            chunk_end = span[1]
+        else:
+            data["chunk_span"].append((chunk_start, chunk_end))
+            chunk_start = span[0]
+            chunk_end = span[1]
+
+    if "I" in chunk: # 最後が Iだった場合
+        data["chunk_span"].append((chunk_start, chunk_end))
+    if "*" in luw: # 最後が * だった場合
+        data["luw_span"].append((luw_start, luw_end, luw_type))
+
+    return data
+    
 @Encoder.register("jsonl")
 class PassThrough(Encoder):
 
     def encode(self, tokens: List[str], pos: List[str], **kwargs) -> Any:
         r = {"tokens": tokens, "pos": pos}
         r.update(kwargs)
+        append_spans(r)
         return json.dumps(r, ensure_ascii=False)
 
 
@@ -175,6 +221,12 @@ class LUWSplitter(Encoder):
             
         return " ".join(c_tokens)
     
+@Encoder.register("mrp")
+class MRPformatter(Encoder):
+
+    def encode(self, tokens: List[str], pos: List[str], chunk: List[str], **kwargs) -> Any:
+        pass
+
 
 class SUWTokenizer(Registrable):
 
@@ -319,8 +371,9 @@ class Predictor:
                 res["sentence"] = sentence
                 yield encoder.encode(**res)
 
-    def evaluate(self, inputfile: str, batch_size: int = 8, device: str="cpu", targets: List[str]=("luw", "chunk")):
 
+    def evaluate(self, inputfile: str, batch_size: int = 8, device: str="cpu", targets: List[str]=("luw", "chunk"), suw_tokenizer: str=None, suw_tokenizer_option: dict=None):
+        tokenizer = SUWTokenizer.by_name(suw_tokenizer)(**suw_tokenizer_option) if suw_tokenizer else None
         dataset = LUWJsonLDataset(inputfile, **self.dataeset_options)
         dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=LUWJsonLDataset.collate_function)
 
@@ -332,6 +385,7 @@ class Predictor:
         self.model.to(device)
 
         reporters = {name: MetricReporter(name) for name in targets}
+        span_reporters = {f"{name}_span": SpanBasedMetricReporter(f"{name}_span") for name in targets}
 
 
         for data in dataloader:
@@ -348,8 +402,11 @@ class Predictor:
                     labels = self.extract_labels(None, prd)
                 else:
                     labels = self.extract_labels(wids, prd)
+                
                 res = self.decoder.decode(tokens, pos, labels)
+                res = append_spans(res)
                 gres = self.decoder.decode(tokens, pos, gold)
+                gres = append_spans(gres)
 
                 if np.random.random() < 0.02:
                     print("gold", gres)
@@ -358,5 +415,12 @@ class Predictor:
                     rep = reporters[target]
                     rep.update(gres[target], res[target])
 
+                    starget = f"{target}_span"
+                    rep = span_reporters[starget]
+                    rep.update(gres[starget], res[starget])
+
         for rep in reporters.values():
+            rep.pretty()
+        
+        for rep in span_reporters.values():
             rep.pretty()

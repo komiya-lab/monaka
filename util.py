@@ -219,6 +219,26 @@ def chjjsonl2luwjson(jsonlfile: str, luw: bool=True, chunk: bool=True):
                 res['labels'].append(tag)
             print(json.dumps(res, ensure_ascii=False))
 
+@app.command()
+def chjjsonl2comainu(jsonlfile: str, luw: bool=True, chunk: bool=True):
+    with open(jsonlfile) as f:
+        for line in f:
+            js = json.loads(line)
+            res = {
+                "sentence": js["sentence"],
+                "tokens": [t["originalText(S)"] for t in js["tokens"]],
+                "pos": [chjpos(t) for t in js["tokens"]],
+                "labels": []
+            }
+            for token in js["tokens"]:
+                tag = ""
+                if chunk:
+                    tag += "B" if token["bunsetsu1(L)"] == "B" else "I"
+                if luw:
+                    tag += "B" if token["luw(L)"] == "B" else "I"
+                    tag += "a" if chjlpos(token) == chjpos(token) else ""
+                res['labels'].append(tag)
+            print(json.dumps(res, ensure_ascii=False))
 
 if __name__ == "__main__":
     app()
