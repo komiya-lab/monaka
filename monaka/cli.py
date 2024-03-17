@@ -7,7 +7,8 @@ import enum
 from pathlib import Path
 from typing import List, Optional
 from rich.progress import Progress
-from monaka.predictor import Predictor, RESC_DIR
+from monaka.predictor import Predictor, RESC_DIR, Encoder, Decoder
+from monaka.metric import SpanBasedMetricReporter
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
 
@@ -82,12 +83,51 @@ def parse(model_dir: Path, inputs: List[str], device: str="cpu", batch: int=8, o
     predictor = Predictor(model_dir=model_dir)
     for r in predictor.predict(inputs, suw_tokenizer=tokenizer, suw_tokenizer_option={"dic": dic}, device=device, batch_size=batch, encoder_name=output_format):
         print(r)
-    
+
+@app.command()
+def predict(model_dir: Path, input_file: Path, device: str="cpu", batch: int=8, output_format: str="jsonl",
+          tokenizer: str="mecab", dic: str="gendai"):
+    with open(input_file) as f:
+        inputs = [json.loads(line)["sentence"] for line in f]
+    predictor = Predictor(model_dir=model_dir)
+    for r in predictor.predict(inputs, suw_tokenizer=tokenizer, suw_tokenizer_option={"dic": dic}, device=device, batch_size=batch, encoder_name=output_format):
+        print(r)
+
 
 @app.command()
 def evaluate(model_dir, inputfile: str, device: str="cpu", batch: int=8, targets: List[str]=("luw", "chunk")):
     predictor = Predictor(model_dir=model_dir)
     predictor.evaluate(inputfile, batch_size=batch, device=device, targets=targets)
+
+
+@app.command()
+def score(gold_file: Path, pred_file: Path, targets: List[str]=("suw_span", "luw_span", "chunk_span")):
+
+    reporters = {t:SpanBasedMetricReporter(t) for t in targets}
+    with open(gold_file) as gf, open(pred_file) as pf:
+        for gline, pline in zip(gf, pf):
+            gjs = json.loads(gline)
+            pjs = json.loads(pline)
+            for t in targets:
+                rep = reporters[t]
+                rep.update(gjs[t], pjs[t])
+
+    for rep in reporters.values():
+        rep.pretty()
+
+
+
+@app.command()
+def convert(dencoder: str, encoder: str, file_path: Path):
+    enc = Encoder.by_name(encoder)()
+    dec = Decoder.by_name(dencoder)()
+    with open(file_path) as f:
+        for line in f:
+            js = json.loads(line)
+            data = dec.decode(**js)
+            out = enc.encode(**data)
+            print(out)
+
 
 if __name__ == "__main__":
     app()
