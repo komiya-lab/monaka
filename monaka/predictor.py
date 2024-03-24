@@ -134,6 +134,7 @@ def append_spans(data):
         start += len(token)
 
     data["luw_span"] = []
+    data["luw_triples"] = []
     data["chunk_span"] = []
 
     luw_start = -1
@@ -152,7 +153,8 @@ def append_spans(data):
         if "*" in luw:
             luw_end = span[1]
         else:
-            data["luw_span"].append((luw_start, luw_end, luw_type))
+            data["luw_span"].append((luw_start, luw_end))
+            data["luw_triples"].append((luw_start, luw_end, luw_type))
             luw_start = span[0]
             luw_end = span[1]
             luw_type = luw
@@ -167,7 +169,8 @@ def append_spans(data):
     if "I" in chunk: # 最後が Iだった場合
         data["chunk_span"].append((chunk_start, chunk_end))
     if "*" in luw: # 最後が * だった場合
-        data["luw_span"].append((luw_start, luw_end, luw_type))
+        data["luw_span"].append((luw_start, luw_end))
+        data["luw_triples"].append((luw_start, luw_end, luw_type))
 
     return data
     
@@ -386,6 +389,7 @@ class Predictor:
 
         reporters = {name: MetricReporter(name) for name in targets}
         span_reporters = {f"{name}_span": SpanBasedMetricReporter(f"{name}_span") for name in targets}
+        span_reporters["luw_triples"] = SpanBasedMetricReporter("luw_triples")
 
 
         for data in dataloader:
@@ -418,6 +422,7 @@ class Predictor:
                     starget = f"{target}_span"
                     rep = span_reporters[starget]
                     rep.update(gres[starget], res[starget])
+                span_reporters["luw_triples"].update(gres["luw_triples"], res["luw_triples"])
 
         for rep in reporters.values():
             rep.pretty()

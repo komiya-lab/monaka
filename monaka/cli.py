@@ -101,7 +101,10 @@ def evaluate(model_dir, inputfile: str, device: str="cpu", batch: int=8, targets
 
 
 @app.command()
-def score(gold_file: Path, pred_file: Path, targets: List[str]=("suw_span", "luw_span", "chunk_span")):
+def score(gold_file: Path, pred_file: Path, targets: List[str]=("suw_span", "luw_span", "luw_triple", "chunk_span"), format: str="pretty"):
+
+    def to_tuple(data, L=2):
+        return [tuple(d[:L]) for d in data]
 
     reporters = {t:SpanBasedMetricReporter(t) for t in targets}
     with open(gold_file) as gf, open(pred_file) as pf:
@@ -110,10 +113,18 @@ def score(gold_file: Path, pred_file: Path, targets: List[str]=("suw_span", "luw
             pjs = json.loads(pline)
             for t in targets:
                 rep = reporters[t]
-                rep.update(gjs[t], pjs[t])
+                if "span" in t:
+                    rep.update(to_tuple(gjs[t]), to_tuple(pjs[t]))
+                else:
+                    target = t.replace("triple", "span")
+                    rep.update(to_tuple(gjs[target], 3), to_tuple(pjs[target], 3))
+
 
     for rep in reporters.values():
-        rep.pretty()
+        if format == "pretty":
+            rep.pretty()
+        else:
+            print(json.dumps(rep.to_json(), indent=True))
 
 
 
