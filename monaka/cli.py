@@ -95,9 +95,9 @@ def predict(model_dir: Path, input_file: Path, device: str="cpu", batch: int=8, 
 
 
 @app.command()
-def evaluate(model_dir, inputfile: str, device: str="cpu", batch: int=8, targets: List[str]=("luw", "chunk")):
+def evaluate(model_dir, inputfile: str, device: str="cpu", batch: int=8, targets: List[str]=("luw", "chunk"), format: str="pretty", outputfile: str=None):
     predictor = Predictor(model_dir=model_dir)
-    predictor.evaluate(inputfile, batch_size=batch, device=device, targets=targets)
+    predictor.evaluate(inputfile, batch_size=batch, device=device, targets=targets, format_=format, outputfile=outputfile)
 
 
 @app.command()

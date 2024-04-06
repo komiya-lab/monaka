@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 import glob
 import json
 import torch
@@ -166,11 +167,9 @@ def append_spans(data):
             chunk_start = span[0]
             chunk_end = span[1]
 
-    if "I" in chunk: # 最後が Iだった場合
-        data["chunk_span"].append((chunk_start, chunk_end))
-    if "*" in luw: # 最後が * だった場合
-        data["luw_span"].append((luw_start, luw_end))
-        data["luw_triples"].append((luw_start, luw_end, luw_type))
+    data["chunk_span"].append((chunk_start, chunk_end))
+    data["luw_span"].append((luw_start, luw_end))
+    data["luw_triples"].append((luw_start, luw_end, luw_type))
 
     return data
     
@@ -375,10 +374,13 @@ class Predictor:
                 yield encoder.encode(**res)
 
 
-    def evaluate(self, inputfile: str, batch_size: int = 8, device: str="cpu", targets: List[str]=("luw", "chunk"), suw_tokenizer: str=None, suw_tokenizer_option: dict=None):
+    def evaluate(self, inputfile: str, batch_size: int = 8, device: str="cpu", targets: List[str]=("luw", "chunk"), format_: str="pretty", 
+                suw_tokenizer: str=None, suw_tokenizer_option: dict=None, outputfile: str=None):
         tokenizer = SUWTokenizer.by_name(suw_tokenizer)(**suw_tokenizer_option) if suw_tokenizer else None
         dataset = LUWJsonLDataset(inputfile, **self.dataeset_options)
         dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=LUWJsonLDataset.collate_function)
+        if outputfile is not None:
+            output = open(outputfile, "w")
 
         init_device(device)
         try:
@@ -412,9 +414,12 @@ class Predictor:
                 gres = self.decoder.decode(tokens, pos, gold)
                 gres = append_spans(gres)
 
+                if outputfile is not None:
+                    print(json.dumps(res, ensure_ascii=False), file=output)
+
                 if np.random.random() < 0.02:
-                    print("gold", gres)
-                    print("pred", res)
+                    print("gold", gres, file=sys.stderr)
+                    print("pred", res, file=sys.stderr)
                 for target in targets:
                     rep = reporters[target]
                     rep.update(gres[target], res[target])
@@ -424,8 +429,21 @@ class Predictor:
                     rep.update(gres[starget], res[starget])
                 span_reporters["luw_triples"].update(gres["luw_triples"], res["luw_triples"])
 
-        for rep in reporters.values():
-            rep.pretty()
-        
-        for rep in span_reporters.values():
-            rep.pretty()
+        if "pretty" in format_:
+            for rep in reporters.values():
+                rep.pretty()
+            
+            for rep in span_reporters.values():
+                rep.pretty()
+        else:
+            res = dict()
+            for k, rep in reporters.items():
+                res[k] = rep.to_json()
+
+            for k, rep in span_reporters.items():
+                res[k] = rep.to_json()
+
+            print(json.dumps(res, indent=True))
+
+        if outputfile is not None:
+            output.close()

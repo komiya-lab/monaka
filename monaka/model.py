@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 import json
 from random import Random
 
@@ -205,7 +206,7 @@ class WordTaggingParserModel(LUWParserModel):
 
         we = list()
         if self.m_pos_emb and torch.max(word_ids)+1 != pos.size()[-1]:
-            print(torch.max(word_ids, dim=1))
+            print(torch.max(word_ids, dim=1), file=sys.stderr)
         L = torch.max(word_ids) + 1 if not self.m_pos_emb else pos.size()[-1] # なぜかPOSが多い時がある。調査要
 
         for i in range(L):
