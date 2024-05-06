@@ -30,6 +30,13 @@ class Decoder(Registrable):
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         return self.decode(*args, **kwds)
 
+    def luw_pos(self, text: str, pos_level: int) -> str:
+        pos: List = list()
+        for token in text.split("_"):
+            pos.extend([t for t in token.split("-") if len(t) > 1])
+        if pos_level is not None and pos_level > -1:
+            return "-".join(pos[:pos_level])
+        return "-".join(pos)
     
     def decode(self, tokens: List[str], pos: List[str], labels: List[str], **kwargs) -> Dict:
         """
@@ -47,7 +54,7 @@ class Decoder(Registrable):
 @Decoder.register("LUW-Bunsetsu")
 class LUWChunkDecoder(Decoder):
 
-    def decode(self, tokens: List[str], pos: List[str], labels: List[str], **kwargs) -> Dict:
+    def decode(self, tokens: List[str], pos: List[str], labels: List[str], pos_level:int = -1, **kwargs) -> Dict:
         """
         labelsが以下の形式の場合に利用する
         (B or I)(B or I)(LUW品詞)_(LUW活用型)_(LUW活用形)
@@ -61,7 +68,7 @@ class LUWChunkDecoder(Decoder):
             else:
                 chunk.append(l[0])
                 if l[1] == "B":
-                    luw.append(l[2:])
+                    luw.append(self.luw_pos(l[2:], pos_level))
                 else:
                     luw.append("*")
         res = {
@@ -78,7 +85,7 @@ class LUWChunkDecoder(Decoder):
 @Decoder.register("comainu")
 class ComainuDecoder(Decoder):
 
-    def decode(self, tokens: List[str], pos: List[str], labels: List[str], **kwargs) -> Dict:
+    def decode(self, tokens: List[str], pos: List[str], labels: List[str], pos_level:int = -1, **kwargs) -> Dict:
         """
         labelsが以下の形式の場合に利用する Comainu方式
         (B or I)(B or I)(a)
@@ -89,7 +96,7 @@ class ComainuDecoder(Decoder):
         for l, p in zip(labels, pos):
             if l in ["unk", "pad"]:
                 chunk.append("B")
-                luw.append(p)
+                luw.append(self.luw_pos(p, pos_level))
             else:
                 chunk.append(l[0])
                 if l[1] == "B":
@@ -374,7 +381,7 @@ class Predictor:
                 yield encoder.encode(**res)
 
 
-    def evaluate(self, inputfile: str, batch_size: int = 8, device: str="cpu", targets: List[str]=("luw", "chunk"), format_: str="pretty", 
+    def evaluate(self, inputfile: str, batch_size: int = 8, device: str="cpu", targets: List[str]=("luw", "chunk"), pos_level: int = -1, format_: str="pretty", 
                 suw_tokenizer: str=None, suw_tokenizer_option: dict=None, outputfile: str=None):
         tokenizer = SUWTokenizer.by_name(suw_tokenizer)(**suw_tokenizer_option) if suw_tokenizer else None
         dataset = LUWJsonLDataset(inputfile, **self.dataeset_options)
@@ -409,9 +416,9 @@ class Predictor:
                 else:
                     labels = self.extract_labels(wids, prd)
                 
-                res = self.decoder.decode(tokens, pos, labels)
+                res = self.decoder.decode(tokens, pos, labels, pos_level)
                 res = append_spans(res)
-                gres = self.decoder.decode(tokens, pos, gold)
+                gres = self.decoder.decode(tokens, pos, gold, pos_level)
                 gres = append_spans(gres)
 
                 if outputfile is not None:
