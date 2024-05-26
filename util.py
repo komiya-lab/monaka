@@ -1,6 +1,7 @@
 import os
 import typer
 import json
+from typing import List
 
 
 app = typer.Typer()
@@ -239,6 +240,32 @@ def chjjsonl2comainu(jsonlfile: str, luw: bool=True, chunk: bool=True):
                     tag += "a" if chjlpos(token) == chjpos(token) else ""
                 res['labels'].append(tag)
             print(json.dumps(res, ensure_ascii=False))
+
+
+@app.command()
+def summarize(jsonfiles: List[str]):
+    res = dict()
+    
+    def update(dic1, dic2):
+        for k in ("gold", "correct", "system"):
+            dic1[k] += dic2[k]
+
+    def recalc(dic):
+        for k, d in dic.items():
+            d["precision"] = d["correct"] / d["system"]
+            d["recall"] = d["correct"] / d["gold"]
+            d["f1"] = 2.0 * d["correct"] / (d["system"] + d["gold"])
+
+    for jsonfile in jsonfiles:
+        with open(jsonfile) as f:
+            js = json.load(f)
+            for k, d in js.items():
+                if k not in res:
+                    res[k] = d
+                else:
+                    update(res[k], d)
+    recalc(res)
+    print(json.dumps(res, indent=True))
 
 if __name__ == "__main__":
     app()
