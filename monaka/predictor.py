@@ -366,6 +366,8 @@ class Predictor:
             subwords = pad_sequence(data["input_ids"], batch_first=True, padding_value=dataset.pad_token_id).to(device)
             word_ids = pad_sequence([torch.LongTensor(js.word_ids()) for js in data["subwords"]], batch_first=True, padding_value=-1).to(device)
             pos_ids = pad_sequence(data["pos_ids"], batch_first=True, padding_value=1).to(device) if "pos_ids" in data else None
+            lemma_ids = pad_sequence(data["lemma_ids"], batch_first=True, padding_value=self.train_data.pad_token_id).to(device) if "lemma_ids" in data else None
+            lemma_word_ids = pad_sequence([torch.LongTensor(js.word_ids()) for js in data["lemma_subwords"]], batch_first=True, padding_value=-1).to(device) if "lemma_ids" in data else None
 
             out = self.model(subwords, word_ids, pos_ids)
             pred = torch.argmax(out, dim=-1) # batch, len, 

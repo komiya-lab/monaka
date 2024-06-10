@@ -19,6 +19,7 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
         "sentence": str,   # 文そのもの
         "tokens": [str, ]  # 短単位のリスト
         "pos": [str, ]     # 形態論情報(短単位)
+        "lemma": [str,]    # 語彙素原形(必須フィールドではない)
         "labels": [str, ]  # ラベル。短単位ごとに付与
     }
 
@@ -106,7 +107,6 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
         if len(js["pos"]) != len(js["tokens"]):
             self.logger.warn(f'skip loading {js["sentence"]} because of pos {len(js["pos"])} and token {len(js["tokens"])} length unmatch')
             return
-        
         if len(js["pos"]) == 0:
             self.logger.warn(f'skip loading {js["sentence"]} because there is no token.')
             return
@@ -114,6 +114,28 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
         js["subwords"] = self.to_token_ids(js["tokens"], js["pos"] if self.pos_as_tokens else None)
         js["input_ids"] = torch.LongTensor(js["subwords"]["input_ids"])
         js["label_ids"] = self.to_label_ids(js["labels"], js["subwords"].word_ids() if self.label_for_all_subwords else None) if "labels" in js else None
+
+
+        if "lemma" in js:
+            js["lemma_subwords"] = self.to_token_ids(js["lemma"])
+            js["lemma_ids"] = []
+            #torch.LongTensor(js["lemma_subwords"]["input_ids"]) # lemma size list of subword list
+            sub_idx = js["lemma_subwords"]["input_ids"]
+            w_idx = js["subwords"].word_ids()
+            l_idx = js["lemma_subwords"].word_ids()
+            if len(l_idx) == 0:
+                self.logger.warn(f"no lemma: {js['lemma']}")
+                return
+
+            for i in range(max(l_idx) + 1):
+                js["lemma_ids"].append(torch.LongTensor([sid for sid, wid in zip(sub_idx, l_idx) if wid == i]))
+            
+            js["lemma_target"] = [js["lemma_id"][i] for i in w_idx]
+            #for l_subs, lid in zip(js["lemma_subwords"].word_ids(), js["lemma_id"]):
+            #    js["lemma_target"].extend([lid for _ in range(len(l_subs))])
+        
+            #print(len(js["lemma_target"] ), len(js["input_ids"] ))
+
         if self.pos_dic:
             js["pos_ids"] = self.to_pos_ids(js["pos"], js["subwords"].word_ids() if self.label_for_all_subwords else None) 
 

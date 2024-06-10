@@ -1,10 +1,12 @@
 import os
+import csv
 import typer
 import json
 from typing import List
 
 
 app = typer.Typer()
+
 def load_chj(fname: str):
     head = [
         "corpusName(S)",
@@ -194,20 +196,23 @@ def chjstats(jsonlname: str, key: str="サブコーパス名"):
         print(k, v)
 
 def chjpos(data: dict):
-    return f'{data.get("pos(S)", "")}_{data.get("sysCType(S)", "")}_{data.get("cForm(S)", "")}'
+    return f'{data.get("pos(S)", "")}'
 
 def chjlpos(data: dict):
-    return f'{data.get("l_pos(L)", "")}_{data.get("l_CType(L)", "")}_{data.get("l_cForm(L)", "")}'
+    return f'{data.get("l_pos(L)", "")}'
 
 @app.command()
 def chjjsonl2luwjson(jsonlfile: str, luw: bool=True, chunk: bool=True):
     with open(jsonlfile) as f:
         for line in f:
             js = json.loads(line)
+            lemma_id = 0
             res = {
                 "sentence": js["sentence"],
                 "tokens": [t["originalText(S)"] for t in js["tokens"]],
                 "pos": [chjpos(t) for t in js["tokens"]],
+                "lemma": [],
+                "lemma_id": [],
                 "labels": []
             }
             for token in js["tokens"]:
@@ -218,6 +223,13 @@ def chjjsonl2luwjson(jsonlfile: str, luw: bool=True, chunk: bool=True):
                     tag += "B" if token["luw(L)"] == "B" else "I"
                     tag += chjlpos(token)
                 res['labels'].append(tag)
+                if token["luw(L)"] == "B":
+                    res["lemma_id"].append(lemma_id)
+                    res["lemma"].append(token["l_lemma(L)"])
+                    lemma_id += 1
+                else:
+                    res["lemma_id"].append(lemma_id)
+
             print(json.dumps(res, ensure_ascii=False))
 
 @app.command()

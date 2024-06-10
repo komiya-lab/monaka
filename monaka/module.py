@@ -13,6 +13,7 @@ class LMEmbedding(nn.Module, Registrable):
    
    def __init__(self, *args, **kwargs) -> None:
     self.n_out = kwargs.get("n_out", 0)
+    self.n_vocab = kwargs.get("n_vocab", 0)
     nn.Module.__init__(self)
     Registrable.__init__(self)
 
@@ -40,7 +41,7 @@ class AutoLMEmebedding(LMEmbedding):
    """
    
     def __init__(self, model: str, requires_grad: bool, use_scalar_mix: bool, sclar_mix_dropout:float = 0.1, use_attentions: bool=False,
-                max_length: int=512) -> None:
+                max_length: int=512, **kwargs) -> None:
         self.model = model
         self.requires_grad = requires_grad
         self.use_scalar_mix = use_scalar_mix
@@ -51,12 +52,12 @@ class AutoLMEmebedding(LMEmbedding):
         self.config = AutoConfig.from_pretrained(model, output_hidden_states=True,
                                                     output_attentions=use_attentions)
             
-        super().__init__(n_out=self.config.hidden_size)
+        super().__init__(n_out=self.config.hidden_size, n_vocab=self.config.vocab_size)
         self.lm = AutoModel.from_pretrained(model, config=self.config)
         self.lm.requires_grad_(requires_grad)
         self.n_layers = self.config.num_hidden_layers
         self.pad_index = self.config.pad_token_id
-        self.sclar_mix = ScalarMix(self.n_layers, sclar_mix_dropout)
+        self.scalar_mix = ScalarMix(self.n_layers, sclar_mix_dropout)
         
     def __repr__(self):
         s = f"{self.model}, n_out={self.n_out}"
@@ -125,7 +126,7 @@ class T5EncoderEmbedding(AutoLMEmebedding):
             最大subword長 default 5120
    """
    
-   def __init__(self, model: str, requires_grad: bool, use_scalar_mix: bool, sclar_mix_dropout:float = 0.1, use_attentions: bool=False, max_len: int=5120) -> None:
+   def __init__(self, model: str, requires_grad: bool, use_scalar_mix: bool, sclar_mix_dropout:float = 0.1, use_attentions: bool=False, max_len: int=5120, **kwargs) -> None:
     self.model = model
     self.requires_grad = requires_grad
     self.use_scalar_mix = use_scalar_mix
@@ -141,7 +142,7 @@ class T5EncoderEmbedding(AutoLMEmebedding):
     self.pad_index = self.config.pad_token_id
     self.sclar_mix = ScalarMix(self.n_layers, sclar_mix_dropout)
 
-    LMEmbedding.__init__(self, n_out=self.config.hidden_size)
+    LMEmbedding.__init__(self, n_out=self.config.hidden_size, n_vocab=self.config.vocab_size)
     
 
 

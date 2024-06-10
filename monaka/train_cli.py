@@ -34,7 +34,7 @@ def create_vocab(output_dir: Path, jsonl_files: List[Path]):
 
 
 @app.command()
-def train(config_file: str, output_dir: str, device: str="cpu", local_rank: int=-1, 
+def train(config_file: str, output_dir: str, device: str="cpu", local_rank: int=-1, trainer_name: str="segmentation",
           train_files: Optional[List[Path]]=None, dev_files: Optional[List[Path]]=None, test_files: Optional[List[Path]]=None):
     with open(config_file) as f:
         config = json.load(f)
@@ -53,12 +53,12 @@ def train(config_file: str, output_dir: str, device: str="cpu", local_rank: int=
     with open(os.path.join(output_dir, "config.json"), "w") as f:
         json.dump(config, f, indent=True, ensure_ascii=False)
 
-    trainer = Trainer(output_dir=output_dir, **config)
+    trainer = Trainer.by_name(trainer_name)(output_dir=output_dir, **config)
     trainer.train(device, local_rank)
 
 
 @app.command()
-def train_cv(config_file: str, output_dir: str, device: str="cpu", local_rank: int=-1):
+def train_cv(config_file: str, output_dir: str, device: str="cpu", local_rank: int=-1, trainer_name: str="segmentation"):
     with open(config_file) as f:
         config = json.load(f)
 
@@ -77,7 +77,7 @@ def train_cv(config_file: str, output_dir: str, device: str="cpu", local_rank: i
         with open(os.path.join(cvdir, "config.json"), "w") as f:
             json.dump(config, f, indent=True, ensure_ascii=False)
 
-        trainer = Trainer(output_dir=cvdir, **config)
+        trainer = Trainer.by_name(trainer_name)(output_dir=cvdir, **config)
         trainer.train(device, local_rank)
 
 

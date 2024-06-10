@@ -76,6 +76,10 @@ monaka parse {model} 今日はいい天気ですね --output-format bunsetu-spli
 今日は いい 天気ですね
 ```
 
+## Model download
+
+The author will provide trained model upon a request. Please contact the author.
+
 ## Training monaka model
 
 ### LUW and Bunsetsu tokenizer/chunker

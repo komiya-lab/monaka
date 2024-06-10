@@ -8,6 +8,8 @@ from random import Random
 import torch
 import torch.nn as nn
 import torch.distributed as dist
+from torch.nn.utils.rnn import pad_sequence
+
 from registrable import Registrable
 from typing import Dict
 from monaka.module import MLP, LMEmbedding
@@ -33,12 +35,115 @@ class LUWParserModel(nn.Module, Registrable):
 
         return cls(**config)
 
-    def forward(self, words: torch.Tensor, word_ids: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
+    def forward(self, words: torch.Tensor, word_ids: torch.Tensor, pos: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         raise NotImplementedError
     
-    def loss(self, out, labels, mask) -> torch.Tensor:
+    def loss(self, out, labels, mask, *args, **kwargs) -> torch.Tensor:
         raise NotImplementedError
     
+class LUWLemmaModel(nn.Module, Registrable):
+    """
+    語彙素原形を推定するモデルの基底クラス
+    """
+
+    def __init__(self, *args, **kwargs) -> None:
+        nn.Module.__init__(self)
+        Registrable.__init__(self)
+
+    @classmethod
+    def from_config(cls, config: Dict,  **kwargs):
+
+        return cls(**config)
+
+    def forward(self, words: torch.Tensor, luw_target: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+        raise NotImplementedError
+    
+    def loss(self, out: torch.Tensor, labels: torch.Tensor, mask: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+        raise NotImplementedError
+    
+
+@LUWLemmaModel.register("FixLen")
+class FixLenLemmaModel(LUWLemmaModel):
+    """
+    固定長のサブワードで原形を推定するモデル
+
+    Args:
+        lm_class_name (str):
+            用いるlm class名 TrasformersのAutoConfig, AutoModelなどが上手く使えない場合は専用クラスが用意されている。
+        lm_class_config (dict):
+            lm_class用のconfig
+        max_len: (int)
+            原形のサブワード最大長
+        dropout: (float)
+            dropout
+    """
+
+    def __init__(self,
+            lm_class_name: str,
+            lm_class_config: Dict,
+            max_len: int,
+            dropout: float, 
+            **kwargs) -> None:
+        super().__init__(**kwargs)
+
+        self.max_len = max_len
+        self.dropout = dropout
+        self.lm_class_name = lm_class_name
+        self.lm_class_config = lm_class_config
+
+        self.m_lm = LMEmbedding.by_name(lm_class_name)(**lm_class_config)
+        self.m_out = MLP(self.m_lm.n_out, self.m_lm.n_vocab) # 埋め込み表現次元 -> subword ID
+
+        self.criterion = nn.CrossEntropyLoss()
+        
+    def forward(self, inputs: torch.Tensor, target: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+
+        """
+        inputs: [batch, subwords_len]
+        target: [batch, subword_len] the indices pointing to target luw
+        """
+        words_emb = self.m_lm(inputs)
+        L = torch.max(target) + 1
+        embs = list()
+
+        for i in range(L):
+            wi = target.eq(i).unsqueeze(-1)
+            l = torch.sum(wi)
+            mask = torch.cat([wi for _ in range(words_emb.size()[-1])], dim=-1) # batch, n subwords, hidden
+            #print(words_emb.size())
+            #print(mask.size())
+            #_o = words_emb * mask # batch (actually = 1), num of subwords in a word, hidden (acctually masked zero)
+            _o = words_emb[mask].reshape((l, words_emb.size()[-1]))
+            if l > self.max_len:
+                _o = _o[:self.max_len, :]
+            embs.append(_o)
+
+        # サイズを維持するためにわざと追加
+        temp_embs = words_emb[0, :self.max_len, :]
+        embs.append(temp_embs)
+            
+
+        embs = pad_sequence(embs, batch_first=True) # target luw + 1, self.max_len, hidden
+        #print(embs.size())
+        embs = embs[:-1, :, :] # target luw, self.max_len, hidden
+        #print(embs.size())
+        out = self.m_out(embs)
+
+        return out
+
+    def loss(self, out: torch.Tensor, labels: torch.Tensor, mask: torch.Tensor, *args, **kwargs):
+        """
+        out: [target luw, self.max_len, n_class]
+        labels: [target luw, max lemma, 1]
+        mask: mask
+        """
+
+        osize = out.size()
+        labels_ = torch.zeros((osize[0], osize[1], 1), device=out.device, dtype=torch.long)
+        lsize = labels.size()
+        labels_[:lsize[0], :lsize[1], :] = labels.unsqueeze(-1)
+        #print(out.size(), labels_.size())
+        return self.criterion(out.flatten(0, 1), labels_.flatten()) 
 
 @LUWParserModel.register("SeqTagging")
 class SeqTaggingParserModel(LUWParserModel):
@@ -114,7 +219,7 @@ class SeqTaggingParserModel(LUWParserModel):
 
         return out # batch, words_len, n_class
     
-    def loss(self, out: torch.Tensor, labels: torch.Tensor, mask: torch.Tensor):
+    def loss(self, out: torch.Tensor, labels: torch.Tensor, mask: torch.Tensor, *args, **kwargs):
         """
         out: [batch, words_len, n_class]
         labels: [batch, 1]
@@ -230,7 +335,20 @@ class WordTaggingParserModel(LUWParserModel):
         out = self.m_out(words_emb) # batch, len, hidden
         return out # batch, words_len, n_class
     
-    def loss(self, out: torch.Tensor, labels: torch.Tensor, mask: torch.Tensor):
+    def loss(self, out: torch.Tensor, labels: torch.Tensor, mask: torch.Tensor, *args, **kwargs):
+        """
+        out: [batch, words_len, n_class]
+        labels: [batch, 1]
+        mask: mask
+        """
+        out_size = out.size()
+        mask = mask[:out_size[0], :out_size[1]]
+        labels = labels[:out_size[0], :out_size[1]]
+
+        return self.criterion(out[mask], labels[mask])
+
+
+    def loss(self, out: torch.Tensor, labels: torch.Tensor, mask: torch.Tensor, lemma_ids: torch.Tensor, lemma_word_ids: torch.Tensor, *args, **kwargs):
         """
         out: [batch, words_len, n_class]
         labels: [batch, 1]
