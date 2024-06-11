@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 
 import os
+import io
 import sys
+import csv
 import glob
 import json
 import torch
@@ -208,6 +210,23 @@ class BunsetsuSplitter(Encoder):
             c_tokens.append(prv)
 
         return " ".join(c_tokens)
+    
+
+@Encoder.register("csv")
+class CSVEncoder(Encoder):
+
+    def encode(self, tokens: List[str], pos: List[str], chunk: List[str], **kwargs) -> Any:
+        output = io.StringIO()
+        writer = csv.writer(output)
+        if "luw" in kwargs:
+            lpos = kwargs["luw"]
+        else:
+            lpos = pos
+
+        for tpl in zip(tokens, pos, lpos, chunk):
+            writer.writerow(tpl)
+
+        return output.getvalue()
     
 
 @Encoder.register("luw-split")
