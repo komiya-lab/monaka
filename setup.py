@@ -34,7 +34,7 @@ setuptools.setup(
         "Tracker":"https://github.com/komiya-lab/monaka/issues",
     },
     install_requires=[
-        "pip install protobuf==4.25.3",
+        "protobuf==4.25.3",
         "transformers==4.35.0",
         "registrable",
         "mecab-python3",
