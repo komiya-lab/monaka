@@ -40,6 +40,8 @@ setuptools.setup(
         "mecab-python3",
         "fugashi",
         "ipadic",
+        "typer",
+        "torch",
         "prettytable"
     ],
     extras_require={

@@ -216,7 +216,12 @@ class LUWSplitter(Encoder):
     def encode(self, tokens: List[str], pos: List[str], chunk: List[str], **kwargs) -> Any:
         c_tokens = list()
         prv = ""
-        for token, c in zip(tokens, pos):
+        if "luw" in kwargs:
+            lpos = kwargs["luw"]
+        else:
+            lpos = pos
+
+        for token, c in zip(tokens, lpos):
             if c != "*":
                 if len(prv) > 0:
                     c_tokens.append(prv)
