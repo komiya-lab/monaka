@@ -5,7 +5,7 @@ with open("README.md","r",encoding="utf-8") as r:
 
 setuptools.setup(
     name="monaka",
-    version="0.0.1",
+    version="0.0.2",
     description="A Japanese parser (including support for historical Japanese)",
     long_description=long_description,
     long_description_content_type="text/markdown",
