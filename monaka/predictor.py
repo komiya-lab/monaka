@@ -321,6 +321,12 @@ class Predictor:
         with open(os.path.join(model_dir, "config.json")) as f:
             self.config = json.load(f)
 
+        self.config["dataeset_options"]["label_file"] = os.path.join(model_dir, "labels.json")
+
+        posfile = os.path.join(model_dir, "pos.json")
+        if os.path.exists(posfile):
+            self.config["dataeset_options"]["pos_file"] = posfile
+
         self.model = LUWParserModel.by_name(self.config["model_name"]).from_config(self.config["model_config"], **self.config["dataeset_options"])
         self.model.load_state_dict(torch.load(self.find_best_pt(model_dir)))
         self.model.eval()
@@ -328,16 +334,12 @@ class Predictor:
         self.decoder = Decoder.by_name(self.config["model_config"]["decoder"])()
 
         self.dataeset_options = self.config['dataeset_options']
-        self.dataeset_options["label_file"] = os.path.join(model_dir, "labels.json")
 
         with open(self.dataeset_options["label_file"]) as f:
             self.label_dic = json.load(f)
 
         self.inv_label_dic = {v:k for k, v in self.label_dic.items()}
 
-        posfile = os.path.join(model_dir, "pos.json")
-        if os.path.exists(posfile):
-            self.dataeset_options["pos_file"] = posfile
 
     @staticmethod
     def find_best_pt(model_dir: str) -> str:
