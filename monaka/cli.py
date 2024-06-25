@@ -81,7 +81,12 @@ def download(target: str, dtype: DownloadType = typer.Option(DownloadType.UniDic
 def parse(model_dir: Path, inputs: List[str], device: str="cpu", batch: int=8, output_format: str="jsonl",
           tokenizer: str="mecab", dic: str="gendai"):
     predictor = Predictor(model_dir=model_dir)
-    for r in predictor.predict(inputs, suw_tokenizer=tokenizer, suw_tokenizer_option={"dic": dic}, device=device, batch_size=batch, encoder_name=output_format):
+    if len(inputs) == 1 and os.path.exists(inputs[0]):
+        with open(inputs[0]) as f:
+            inputs_ = [line.strip() for line in f]
+    else:
+        inputs_ = inputs
+    for r in predictor.predict(inputs_, suw_tokenizer=tokenizer, suw_tokenizer_option={"dic": dic}, device=device, batch_size=batch, encoder_name=output_format):
         print(r)
 
 @app.command()
