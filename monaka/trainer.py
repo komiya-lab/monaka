@@ -358,7 +358,9 @@ class LemmaTrainer(Trainer):
             self.batch_size = self.batch_size // dist.get_world_size()
         try:
             device = int(device)
+            logger.info(f"device: {device}")
         except:
+            logger.warn(f"device is not int: {device}")
             pass
         self.model.to(device)
 
@@ -370,8 +372,8 @@ class LemmaTrainer(Trainer):
         writer = SummaryWriter(log_dir=os.path.join(self.output_dir, "tb"))
 
         train_loader = DataLoader(self.train_data, self.batch_size, shuffle=True, collate_fn=LUWJsonLDataset.collate_function)
-        dev_loader = DataLoader(self.dev_data, batch_size=self.batch_size, shuffle=False, collate_fn=LUWJsonLDataset.collate_function)
-        test_loader = DataLoader(self.test_data, batch_size=self.batch_size, shuffle=False, collate_fn=LUWJsonLDataset.collate_function) if self.test_data else None
+        dev_loader = DataLoader(self.dev_data, batch_size=1, shuffle=False, collate_fn=LUWJsonLDataset.collate_function)
+        test_loader = DataLoader(self.test_data, batch_size=1, shuffle=False, collate_fn=LUWJsonLDataset.collate_function) if self.test_data else None
         metric = -1
         total_itr = 0
 
@@ -446,13 +448,16 @@ class LemmaTrainer(Trainer):
                 mask = label_ids.ne(self.train_data.pad_token_id)
 
                 out = self.model(subwords, lemma_target) # batch * luw, vocab size
+                if out.size()[0] != label_ids.size()[0] or out.size()[1] < label_ids.size()[1]:
+                    logger.warn(f"eval: unmatch output and label size: {data['sentence']}, {out.size()}, {label_ids.size()}")
+                    continue
                 loss += self.model.loss(out, label_ids, mask).detach().cpu().item()
                 pred = torch.argmax(out, dim=-1)
                 lsize = label_ids.size()
                 #print(label_ids.size(), pred.size())
                 try:
                     correct += ((pred[:lsize[0], :lsize[1]] == label_ids)).sum().detach().cpu().item()
-                    length += out.size()[0]
+                    length += lsize[0] * lsize[1]
                 except Exception as e:
                     logger.info(f"evaluation skipped: {data['sentence']}")
                     raise e
