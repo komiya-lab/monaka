@@ -169,6 +169,11 @@ def delete_old_bests(model_dir: Path):
         if cand != best:
             os.remove(cand)
 
+
+@app.command()
+def train_lemma():
+    pass
+
 if __name__ == "__main__":
     app()
 

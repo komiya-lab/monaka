@@ -19,7 +19,7 @@ from torch.utils.tensorboard import SummaryWriter
 from registrable import Registrable
 
 from typing import List, Optional, Union, Dict
-from monaka.dataset import LUWJsonLDataset
+from monaka.dataset import LUWJsonLDataset, LemmaJsonDataset
 from monaka.mylogging import init_logger, get_logger
 from monaka.model import LUWParserModel, LUWLemmaModel, init_device, is_master
 from monaka.model import DistributedDataParallel as DDP
@@ -471,3 +471,75 @@ class LemmaTrainer(Trainer):
             model = self.model.module
         state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
         torch.save(state_dict, path)
+
+from transformers import Seq2SeqTrainingArguments, Seq2SeqTrainer as TTrainer, AutoModelForSeq2SeqLM
+
+
+@Trainer.register("lemma-decoder")
+class LemmaDeocderTrainer(Trainer):
+
+    def __init__(self,
+            train_files: Union[str, List[str]],
+            dev_files: Union[str, List[str]],
+            test_files: Optional[Union[str, List[str]]],
+            dataset_options: Dict,
+            model_name: str,
+            model_config: Dict,
+            batch_size: int=8,
+            epochs: int=1,
+            lr: float=2e-5,
+            decay: float=.75,
+            evaluate_step:int =20,
+            verbose: bool=True,
+            seed: int = 419,
+            output_dir: str="",
+            **kwargs):
+        
+        global logger
+        os.makedirs(output_dir, exist_ok=True)
+
+        logger = get_logger(f"monaka.trainer.lemma.{output_dir.replace('/', '.')}")
+        init_logger(logger, handlers=[logging.StreamHandler(), logging.FileHandler(f"{output_dir}/train.lemma.log", 'w')], verbose=verbose)
+        self.output_dir = output_dir
+        self.training_config = Seq2SeqTrainingArguments(
+            output_dir = output_dir,
+            num_train_epochs = epochs, 
+            per_device_train_batch_size = batch_size,
+            per_device_eval_batch_size = batch_size,
+            learning_rate = lr,
+            weight_decay = decay,
+            save_steps = evaluate_step,
+            eval_steps=evaluate_step,
+            logging_dir=output_dir,
+            seed=seed,
+            do_eval = True
+        )
+        logger.info(train_files)
+        logger.info(dev_files)
+        self.dataset_options = dataset_options
+        self.train_dataset = LemmaJsonDataset(train_files, **dataset_options)
+        self.dev_dataset = LemmaJsonDataset(dev_files, **dataset_options)
+        self.test_dataset = None
+        if test_files:
+            self.train_dataset = LemmaJsonDataset(test_files, **dataset_options)
+
+        self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+        self.trainer = TTrainer(self.model, args=self.training_config, train_dataset=self.train_dataset, eval_dataset=self.dev_dataset, compute_metrics=self.compute_metrics)
+        self.tokenizer = self.train_dataset.tokenizer
+
+    def compute_metrics(self, eval_preds):
+        preds, labels = eval_preds
+
+        # decode preds and labels
+        labels = np.where(labels != -100, labels, self.tokenizer.pad_token_id)
+        decoded_preds = self.tokenizer.batch_decode(preds, skip_special_tokens=True)
+        decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
+        correct = [1 for p,l in zip(decoded_preds, decoded_labels) if p.strip() == l.strip()]
+        return len(correct) / len(decoded_preds)
+    
+    def train(self, device, local_rank):
+        self.trainer.train()
+
+    @torch.no_grad()
+    def evaluate(self):
+        pass
