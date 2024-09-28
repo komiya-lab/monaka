@@ -3,6 +3,7 @@ import conllu
 import typer
 import json
 import numpy as np
+import glob
 
 from pathlib import Path
 from typing import List, Optional
@@ -58,13 +59,18 @@ def train(config_file: str, output_dir: str, device: str="cpu", local_rank: int=
 
 
 @app.command()
-def train_cv(config_file: str, output_dir: str, device: str="cpu", local_rank: int=-1, trainer_name: str="segmentation"):
+def train_cv(config_file: str, output_dir: str, data_dir: Path ='', device: str="cpu", local_rank: int=-1, trainer_name: str="segmentation"):
     with open(config_file) as f:
         config = json.load(f)
 
-    train_files = config["train_files"]
-    dev_files = config["dev_files"]
-    test_files = config["test_files"] 
+    if data_dir.exists() and data_dir.is_dir():
+        train_files = sorted(glob.glob(os.path.join(data_dir, "train.?.*")))
+        dev_files = sorted(glob.glob(os.path.join(data_dir, "dev.?.*")))
+        test_files = sorted(glob.glob(os.path.join(data_dir, "test.?.*")))
+    else:
+        train_files = config["train_files"]
+        dev_files = config["dev_files"]
+        test_files = config["test_files"] 
 
     for i, (train_, dev, test) in enumerate(zip(train_files, dev_files, test_files)):
         print(f"cv_{i}")
@@ -121,6 +127,54 @@ def create_split(output_dir: Path, jsonl_files: List[Path], dev_ratio: float=0.0
             for line in tests:
                 f.write(line)
 
+@app.command()
+def create_lemma_split(output_dir: Path, json_files: List[Path], dev_ratio: float=0.05, test_ratio: float=0.05, folds: int=5):
+    os.makedirs(output_dir, exist_ok=True)
+    used = list()
+    data = dict()
+
+    for fname in json_files:
+        with open(fname) as f:
+            js = json.load(f)
+        for key, v in js.items():
+            if key not in data:
+                data[key] = v
+                continue
+            if data[key]["lemma"] != v["lemma"]:
+                print(f"unmatched lemma {data[key]['lemma']} and {v['lemma']}")
+        
+    
+    lines = list(data.values())
+    
+    for k in range(folds):
+        print(f"createing fold num.:{k}")
+        trains = list()
+        devs = list()
+        tests = list()
+
+        n_lines = [l for l in lines if l not in used]
+        u_lines = [l for l in lines if l in used]
+
+        np.random.shuffle(n_lines)
+        dend = int(len(lines) * dev_ratio)
+        tend = dend + int(len(lines) * test_ratio)
+        devs.extend(n_lines[:dend])
+        tests.extend(n_lines[dend:tend])
+        trains.extend(n_lines[tend:])
+        trains.extend(u_lines)
+
+        used.extend(tests)
+
+
+        with open(os.path.join(output_dir, f"train.{k}.json"), "w") as f:
+            json.dump({v["input"]:v for v in trains}, f, ensure_ascii=False, indent=True)
+        
+        with open(os.path.join(output_dir, f"dev.{k}.json"), "w") as f:
+            json.dump({v["input"]:v for v in devs}, f, ensure_ascii=False, indent=True)
+
+        with open(os.path.join(output_dir, f"test.{k}.json"), "w") as f:
+            json.dump({v["input"]:v for v in tests}, f, ensure_ascii=False, indent=True)
+
 
 def udlabeling(token, method: str):
     label = ""
@@ -170,9 +224,7 @@ def delete_old_bests(model_dir: Path):
             os.remove(cand)
 
 
-@app.command()
-def train_lemma():
-    pass
+
 
 if __name__ == "__main__":
     app()

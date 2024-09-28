@@ -504,8 +504,10 @@ class LemmaDeocderTrainer(Trainer):
         self.training_config = Seq2SeqTrainingArguments(
             output_dir = output_dir,
             num_train_epochs = epochs, 
+            evaluation_strategy="steps",
             per_device_train_batch_size = batch_size,
-            per_device_eval_batch_size = batch_size,
+            per_device_eval_batch_size = 2,
+            eval_accumulation_steps = 100,
             learning_rate = lr,
             weight_decay = decay,
             save_steps = evaluate_step,
@@ -521,7 +523,7 @@ class LemmaDeocderTrainer(Trainer):
         self.dev_dataset = LemmaJsonDataset(dev_files, **dataset_options)
         self.test_dataset = None
         if test_files:
-            self.train_dataset = LemmaJsonDataset(test_files, **dataset_options)
+            self.test_dataset = LemmaJsonDataset(test_files, **dataset_options)
 
         self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
         self.trainer = TTrainer(self.model, args=self.training_config, train_dataset=self.train_dataset, eval_dataset=self.dev_dataset, compute_metrics=self.compute_metrics)
@@ -529,16 +531,25 @@ class LemmaDeocderTrainer(Trainer):
 
     def compute_metrics(self, eval_preds):
         preds, labels = eval_preds
+        #preds_ = np.argmax(preds)
+        preds_ = [np.argmax(prd, axis=-1) for prd in preds]
+        logger.info(len(preds_))
+        logger.info(preds_[0].shape)
 
         # decode preds and labels
         labels = np.where(labels != -100, labels, self.tokenizer.pad_token_id)
-        decoded_preds = self.tokenizer.batch_decode(preds, skip_special_tokens=True)
+        decoded_preds = self.tokenizer.batch_decode(preds_[0], skip_special_tokens=True)
         decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
         correct = [1 for p,l in zip(decoded_preds, decoded_labels) if p.strip() == l.strip()]
-        return len(correct) / len(decoded_preds)
+        return {"accuracy": len(correct) / len(decoded_preds)}
     
     def train(self, device, local_rank):
         self.trainer.train()
+        if self.test_dataset:
+            metrics = self.trainer.evaluate(self.test_dataset)
+            logger.info(metrics)
+            with open(os.path.join(self.output_dir, "predict.json"), 'w') as f:
+                json.dump(metrics, f, indent=True, ensure_ascii=False)
 
     @torch.no_grad()
     def evaluate(self):
