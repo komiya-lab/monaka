@@ -487,6 +487,7 @@ class LemmaDeocderTrainer(Trainer):
             model_config: Dict,
             batch_size: int=8,
             epochs: int=1,
+            steps: int=1,
             lr: float=2e-5,
             decay: float=.75,
             evaluate_step:int =20,
@@ -504,13 +505,14 @@ class LemmaDeocderTrainer(Trainer):
         self.training_config = Seq2SeqTrainingArguments(
             output_dir = output_dir,
             num_train_epochs = epochs, 
+            max_steps = steps,
             evaluation_strategy="steps",
             per_device_train_batch_size = batch_size,
             per_device_eval_batch_size = 2,
             eval_accumulation_steps = 100,
             learning_rate = lr,
             weight_decay = decay,
-            save_steps = evaluate_step,
+            save_steps = evaluate_step * 4,
             eval_steps=evaluate_step,
             logging_dir=output_dir,
             seed=seed,
@@ -545,6 +547,7 @@ class LemmaDeocderTrainer(Trainer):
     
     def train(self, device, local_rank):
         self.trainer.train()
+        self.trainer.save_model(os.path.join(self.output_dir, "last-checkpoint"))
         if self.test_dataset:
             metrics = self.trainer.evaluate(self.test_dataset)
             logger.info(metrics)

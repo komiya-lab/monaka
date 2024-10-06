@@ -128,7 +128,7 @@ def create_split(output_dir: Path, jsonl_files: List[Path], dev_ratio: float=0.0
                 f.write(line)
 
 @app.command()
-def create_lemma_split(output_dir: Path, json_files: List[Path], dev_ratio: float=0.05, test_ratio: float=0.05, folds: int=5):
+def create_lemma_split(output_dir: Path, json_files: List[Path], dev_ratio: float=0.05, test_ratio: float=0.05, folds: int=5, suw_length:int=1):
     os.makedirs(output_dir, exist_ok=True)
     used = list()
     data = dict()
@@ -137,6 +137,11 @@ def create_lemma_split(output_dir: Path, json_files: List[Path], dev_ratio: floa
         with open(fname) as f:
             js = json.load(f)
         for key, v in js.items():
+            if len(v['suw']) < suw_length:
+                if v['lemma'] != v['suw'][0]['lemma']:
+                    print(f"suw luw unmatch: luw: {v['lemma']} suw: {v['suw'][0]['lemma']}")
+                continue
+
             if key not in data:
                 data[key] = v
                 continue
