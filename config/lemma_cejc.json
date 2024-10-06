@@ -5,7 +5,7 @@
     "dataset_options" :{
         "transformer_name": "sonoisa/t5-base-japanese",
         "max_length": 256,
-        "fields": ["pos", "suw_pos", "suw_surface", "suw_lemma", "suw_pos", "text"]
+        "fields": ["pos", "surface", "suw_surface", "suw_lemma", "suw_pos", "text"]
     },
     "model_name": "sonoisa/t5-base-japanese",
     "model_config": {},
