@@ -72,6 +72,7 @@ def train_cv(config_file: str, output_dir: str, data_dir: Path ='', device: str=
         dev_files = config["dev_files"]
         test_files = config["test_files"] 
 
+    trainer = None
     for i, (train_, dev, test) in enumerate(zip(train_files, dev_files, test_files)):
         print(f"cv_{i}")
         config["train_files"] = [train_]
@@ -83,6 +84,7 @@ def train_cv(config_file: str, output_dir: str, data_dir: Path ='', device: str=
         with open(os.path.join(cvdir, "config.json"), "w") as f:
             json.dump(config, f, indent=True, ensure_ascii=False)
 
+        del trainer
         trainer = Trainer.by_name(trainer_name)(output_dir=cvdir, **config)
         trainer.train(device, local_rank)
 

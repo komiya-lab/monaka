@@ -270,6 +270,10 @@ class LemmaJsonDataset(torch.utils.data.Dataset):
                 self.load_data(jsfile, fields) 
 
     def __getitem__(self, idx):
+        if np.random.random() < 0.1:
+            t = f"input: {self.lemma[idx]['input']} target: {self.lemma[idx]['target']}"
+            #print(t)
+            logger.info(t)
         return self.lemma[idx]
     
     def __len__(self):
@@ -307,6 +311,6 @@ class LemmaJsonDataset(torch.utils.data.Dataset):
             d["attntion_mask"] = torch.tensor(d["subwords"]["attention_mask"])
             d["target_subwords"] = self.tokenizer(d["target"], max_length=self.max_length, padding='max_length')
             d["labels"] = d["target_subwords"]["input_ids"]
-            d["decoder_input_ids"] = d["target_subwords"]["input_ids"]
+            #d["decoder_input_ids"] = d["target_subwords"]["input_ids"]
             self.lemma.append(d)
         

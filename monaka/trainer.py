@@ -543,7 +543,7 @@ class LemmaDeocderTrainer(Trainer):
         decoded_preds = self.tokenizer.batch_decode(preds_[0], skip_special_tokens=True)
         decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
         correct = [1 for p,l in zip(decoded_preds, decoded_labels) if p.strip() == l.strip()]
-        return {"accuracy": len(correct) / len(decoded_preds)}
+        return {"accuracy": len(correct) / len(decoded_preds), "preds": decoded_preds, "labels": decoded_labels}
     
     def train(self, device, local_rank):
         self.trainer.train()

@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
 
 from monaka.model import LUWParserModel, init_device, is_master
-from monaka.dataset import LUWJsonLDataset
+from monaka.dataset import LUWJsonLDataset, LemmaJsonDataset
 from monaka.metric import MetricReporter, SpanBasedMetricReporter
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__)) # monaka dir
@@ -482,3 +482,51 @@ class Predictor:
 
         if outputfile is not None:
             output.close()
+
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, AutoConfig
+from torch.utils.data import DataLoader
+class LemmaPredictor:
+
+    def __init__(self, model_dir: str) -> None:
+        self.model_dir = model_dir
+        with open(os.path.join(model_dir, "config.json")) as f:
+            self.config = json.load(f)
+        self.model = AutoModelForSeq2SeqLM.from_pretrained(os.path.join(model_dir, "last-checkpoint"))
+        print(type(self.model))
+        self.tokenizer = AutoTokenizer.from_pretrained(self.config['model_name'])
+
+    def predict(self, input: str) -> str:
+        print(input)
+        subwords = self.tokenizer([input], max_length=self.config['dataset_options']["max_length"], padding='max_length', truncation=True)
+        print(self.tokenizer.decode(subwords.input_ids[0]))
+        outputs = self.model.generate(torch.LongTensor(subwords.input_ids))
+        print(outputs)
+        print(self.tokenizer.decode(outputs[0], skip_special_tokens=False))
+        return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+    
+    def batch_predict(self, inputs: List[str]) -> List[str]:
+        subwords = self.tokenizer(inputs, max_length=self.config['dataset_options']["max_length"], padding='max_length', truncation=True, return_tensors="pt")
+        outputs = self.model.generate(subwords)
+        return self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
+    
+    def evaluate(self, jsonfile: str) -> Dict:
+        dataset = LemmaJsonDataset(jsonfile, **self.config['dataset_options'])
+        loader = DataLoader(dataset, batch_size=1, shuffle=False)
+
+        c = 0
+        a = 0
+        diff = list()
+        for feat in loader:
+            a += 1
+            pred = self.predict(feat['input'][0])
+            label = feat['target'][0]
+            if pred == label:
+                c += 1
+            else:
+                diff.append(f"input: {feat['input']}, correct: {label}, pred: {pred}")
+        return {
+            "count": a,
+            "acc": c/a,
+            "diff": diff
+        }
+

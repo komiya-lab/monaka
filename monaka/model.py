@@ -348,18 +348,6 @@ class WordTaggingParserModel(LUWParserModel):
         return self.criterion(out[mask], labels[mask])
 
 
-    def loss(self, out: torch.Tensor, labels: torch.Tensor, mask: torch.Tensor, lemma_ids: torch.Tensor, lemma_word_ids: torch.Tensor, *args, **kwargs):
-        """
-        out: [batch, words_len, n_class]
-        labels: [batch, 1]
-        mask: mask
-        """
-        out_size = out.size()
-        mask = mask[:out_size[0], :out_size[1]]
-        labels = labels[:out_size[0], :out_size[1]]
-
-        return self.criterion(out[mask], labels[mask])
-
 
 class DistributedDataParallel(nn.parallel.DistributedDataParallel):
 
