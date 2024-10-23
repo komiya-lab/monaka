@@ -328,7 +328,7 @@ class Predictor:
             self.config["dataeset_options"]["pos_file"] = posfile
 
         self.model = LUWParserModel.by_name(self.config["model_name"]).from_config(self.config["model_config"], **self.config["dataeset_options"])
-        self.model.load_state_dict(torch.load(self.find_best_pt(model_dir)))
+        self.model.load_state_dict(torch.load(self.find_best_pt(model_dir)), strict=False)
         self.model.eval()
 
         self.decoder = Decoder.by_name(self.config["model_config"]["decoder"])()

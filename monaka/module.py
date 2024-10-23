@@ -45,7 +45,7 @@ class AutoLMEmebedding(LMEmbedding):
         self.model = model
         self.requires_grad = requires_grad
         self.use_scalar_mix = use_scalar_mix
-        self.sclar_mix_dropout = use_scalar_mix
+        self.sclar_mix_dropout = sclar_mix_dropout
         self.use_attentions = use_attentions
         self.max_length = max_length
 
@@ -57,7 +57,8 @@ class AutoLMEmebedding(LMEmbedding):
         self.lm.requires_grad_(requires_grad)
         self.n_layers = self.config.num_hidden_layers
         self.pad_index = self.config.pad_token_id
-        self.scalar_mix = ScalarMix(self.n_layers, sclar_mix_dropout)
+        if self.use_scalar_mix:
+            self.scalar_mix = ScalarMix(self.n_layers, sclar_mix_dropout)
         
     def __repr__(self):
         s = f"{self.model}, n_out={self.n_out}"
