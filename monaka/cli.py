@@ -26,7 +26,20 @@ UNIDIC_URLS = {
     "kyogen": UNIDIC_URL + "2203/UniDic-202203_40_chusei-kougo.zip",
     "wakan": UNIDIC_URL + "2203/UniDic-202203_30_chusei-bungo.zip",
     "wabun": UNIDIC_URL + "2203/UniDic-202203_20_chuko.zip",
-    "manyo": UNIDIC_URL + "2203/UniDic-202203_10_jodai.zip"
+    "manyo": UNIDIC_URL + "2203/UniDic-202203_10_jodai.zip",
+    "unidic-spoken": UNIDIC_URL + "2302/unidic-csj-202302.zip",
+    "65_novel": UNIDIC_URL + "2203/UniDic-202203_65_novel.zip",
+    "60b_qkana": UNIDIC_URL + "2203/UniDic-202203_60b_qkana.zip",
+    "60a_kindai-bungo": UNIDIC_URL + "2203/UniDic-202203_60a_kindai-bungo.zip",
+    "50a_kinsei-bungo": UNIDIC_URL + "2203/UniDic-202203_50a_kinsei-bungo.zip",
+    "50c_kinsei-edo": UNIDIC_URL + "2203/UniDic-202203_50c_kinsei-edo.zip",
+    "50b_kinsei-kamigata": UNIDIC_URL + "2203/UniDic-202203_50b_kinsei-kamigata.zip",
+    "40_chusei-kougo": UNIDIC_URL + "2203/UniDic-202203_40_chusei-kougo.zip",
+    "30_chusei-bungo": UNIDIC_URL + "2203/UniDic-202203_30_chusei-bungo.zip",
+    "20_chuko": UNIDIC_URL + "2203/UniDic-202203_20_chuko.zip",
+    "10_jodai": UNIDIC_URL + "2203/UniDic-202203_10_jodai.zip",
+    "70_waka": UNIDIC_URL + "2308/unidic-waka-v202308.zip",
+    "80_kansai_hougen": UNIDIC_URL + "2308/unidic-kansai-v202308.zip"
 }
 prv = 0
 
