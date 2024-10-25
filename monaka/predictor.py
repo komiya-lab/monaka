@@ -223,8 +223,8 @@ class CSVEncoder(Encoder):
         else:
             lpos = pos
 
-        for tpl in zip(tokens, pos, lpos, chunk):
-            writer.writerow(tpl)
+        for token, p, l, c, f in zip(tokens, pos, lpos, chunk, features):
+            writer.writerow((token, p, f[5], l, c))
 
         return output.getvalue()
     
@@ -399,13 +399,14 @@ class Predictor:
             pred = torch.argmax(out, dim=-1) # batch, len, 
 
             pred_np = pred.detach().cpu().numpy()
-            for prd, wids, sentence, tokens, pos in zip(pred_np, word_ids, data["sentence"], data["tokens"], data["pos"]):
+            for prd, wids, sentence, tokens, pos, feat in zip(pred_np, word_ids, data["sentence"], data["tokens"], data["pos"], data["features"]):
                 if not dataset.label_for_all_subwords:
                     labels = self.extract_labels(None, prd)
                 else:
                     labels = self.extract_labels(wids, prd)
                 res = self.decoder.decode(tokens, pos, labels)
                 res["sentence"] = sentence
+                res["features"] = feat
                 yield encoder.encode(**res)
 
 
