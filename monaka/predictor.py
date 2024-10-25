@@ -2,6 +2,7 @@
 
 import os
 import io
+import re
 import sys
 import csv
 import glob
@@ -123,7 +124,7 @@ class ComainuDecoder(Decoder):
 
 class Encoder(Registrable):
 
-    def __init__(self) -> None:
+    def __init__(self, **kwargs) -> None:
         super().__init__()
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
@@ -215,7 +216,7 @@ class BunsetsuSplitter(Encoder):
 @Encoder.register("csv")
 class CSVEncoder(Encoder):
 
-    def encode(self, tokens: List[str], pos: List[str], chunk: List[str], **kwargs) -> Any:
+    def encode(self, tokens: List[str], pos: List[str], chunk: List[str], features: List[List[str]], **kwargs) -> Any:
         output = io.StringIO()
         writer = csv.writer(output)
         if "luw" in kwargs:
@@ -228,6 +229,143 @@ class CSVEncoder(Encoder):
 
         return output.getvalue()
     
+@Encoder.register("mecab")
+class MeCabEncoder(Encoder):
+    
+    def __init__(self, node_format: str='%m\t%f[9]\t%f[6]\t%f[7]\t%F-[0,1,2,3]\t%f[4]\t%f[5]\t%f[13]\t%f[27]\t%f[28]\n', bos_format: str='', eos_format: str='\n', unk_format: str='%m\t%m\t%m\t%m\tUNK\t%f[4]\t%f[5]\t\n', eon_format: str='', **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.node_format = node_format
+        self.bos_format = bos_format
+        self.eos_format = eos_format
+        self.unk_format = unk_format
+        self.eon_format = eon_format
+
+        self.space_matcher = re.compile(r'^(\s+)')
+        self.f_matcher = re.compile(r'\%f\[([\d\,]+)\]')
+        self.fc_matcher = re.compile(r'\%F(.+)\[([\d\,]+)\]')
+
+    def format(self, fstring: str, sentence: str, m_type, token: str, p, l, c, feat: List[str], start: int)-> str:
+        """
+        format like mecab
+
+        %s	形態素種類 (0: 通常, 1: 未知語, 2:文頭, 3:文末)
+        %S	入力文
+        %L	入力文の長さ
+        %m	形態素の表層文字列
+        %M	形態素の表層文字列, ただし空白文字も含めて出力 (%pS を参照のこと)
+        %h	素性の内部 ID
+        %%	% そのもの
+        %c	単語生起コスト
+        %H	素性 (品詞, 活用, 読み) 等を CSV で表現したもの
+        %t	文字種 id
+        %P	周辺確率 (-l2 オプションを指定したときのみ有効)
+        %pi	形態素に付与されるユニークなID
+        %pS	もし形態素が空白文字列で始まる場合は, その空白文字列を表示 %pS%m と %M は同一
+        %ps	開始位置
+        %pe	終了位置
+        %pC	1つ前の形態素との連接コスト
+        %pw	%c と同じ
+        %pc	連接コスト + 単語生起コスト (文頭から累積)
+        %pn	連接コスト + 単語生起コスト (その形態素単独, %pw + %pC)
+        %pb	最適パスの場合 *, それ以外は ' '
+        %pP	周辺確率 (-l2 オプションを指定したときのみ有効)
+        %pA	blpha, forward log 確率 (-l2 オプションを指定したときのみ有効)
+        %pB	beta, backward log 確率 (-l2 オプションを指定したときのみ有効)
+        %pl	形態素の表層文字列としての長さ, strlen (%m) と同一
+        %pL	形態素の表層文字列としての長さ, ただし空白文字列も含む, strlen(%M) と同一
+        %phl	左文脈 id
+        %phr	右文脈 id
+        %f[N]	csv で表記された素性の N番目の要素
+        %f[N1,N2,N3...]	N1,N2,N3番目の素性を, "," を デリミタとして表示
+        %FC[N1,N2,N3...]	N1,N2,N3番目の素性を, C を デリミタとして表示.
+        ただし, 要素が 空の場合は以降表示が省略される. (例)F-[0,1,2]
+        \0 \a \b \t \n \v \f \r \\	通常の エスケープ文字列
+        \s	' ' (半角スペース)
+        設定ファイルに記述するときに使用
+        """
+        f = list()
+        f.extend(feat)
+        f.extend((l, c))
+
+        output = fstring.replace('\\0', '\0')
+        output = output.replace('\\a', '\a')
+        output = output.replace('\\b', '\b')
+        output = output.replace('\\t', '\t')
+        output = output.replace('\\n', '\n')   
+        output = output.replace('\\v', '\v')
+        output = output.replace('\\f', '\f')
+        output = output.replace('\\r', '\r')
+        output = output.replace('\\\\', '\\')
+
+        output = output.replace('%S', sentence)
+        output = output.replace('%s', str(m_type))
+        output = output.replace('%L', str(len(sentence)))
+        output = output.replace('%m', token.strip())
+        output = output.replace('%m', token)
+        output = output.replace('%h', '0')
+        output = output.replace('%%', '%')
+        output = output.replace('%c', '1')
+        output = output.replace('%H', ','.join(f))
+        output = output.replace('%t', '0')
+        output = output.replace('%P', '0')
+        output = output.replace('%pi', '0')
+        # %pS
+        m = self.space_matcher.match(token)
+        if m:
+            output = output.replace('%pS', m.group(1))
+        else:
+            output = output.replace('%pS', '')
+
+        output = output.replace('%ps', str(start))
+        output = output.replace('%pe', str(start + len(token)))
+        output = output.replace('%pC', '0')
+        output = output.replace('%pw', '0')
+        output = output.replace('%pc', '0')
+        output = output.replace('%pn', '0')
+        output = output.replace('%pC', '*')
+        output = output.replace('%pP', '0')
+        output = output.replace('%pB', '0')
+        output = output.replace('%pl', str(len(token.strip())))
+        output = output.replace('%pL', str(len(token)))
+        output = output.replace('%phl', '0')
+        output = output.replace('%phr', '0')
+        output = output.replace('\s', ' ')
+        
+        for m in self.f_matcher.finditer(output):
+            txt = m.group(0)
+            index = [int(v) for v in m.group(1).split(',')]
+            vals = [f[i] for i in index]
+            output = output.replace(txt, ','.join(vals), 1)
+
+        for m in self.fc_matcher.finditer(output):
+            txt = m.group(0)
+            sep = m.group(1)
+            index = [int(v) for v in m.group(2).split(',')]
+            vals = [f[i] for i in index if f[i] not in ('', '*')]
+            output = output.replace(txt, sep.join(vals), 1)
+
+        return output
+
+    def encode(self, tokens: List[str], pos: List[str], chunk: List[str], features: List[List[str]], **kwargs) -> Any:
+        output = ''
+        if "luw" in kwargs:
+            lpos = kwargs["luw"]
+        else:
+            lpos = pos
+
+        output += self.format(self.bos_format, kwargs.get('sentence', ''), 0, '', '', '', '', [], 0)
+        start = 0
+        for i, (token, p, l, c, f) in enumerate(zip(tokens, pos, lpos, chunk, features)):
+            m_type = 0
+            if i == 0:
+                m_type = 2
+            elif i == len(tokens) -1:
+                m_type = 3
+            output += self.format(self.node_format, kwargs.get('sentence', ''), m_type, token, p, l, c, f, start)
+            start += len(token)
+
+        output += self.format(self.eos_format, kwargs.get('sentence', ''), 0, '', '', '', '', [], len(tokens))
+        return output
 
 @Encoder.register("luw-split")
 class LUWSplitter(Encoder):
@@ -370,8 +508,8 @@ class Predictor:
                 prv = wid
         return res
 
-    def predict(self, input: List[str], suw_tokenizer: str, suw_tokenizer_option: dict, encoder_name: str, batch_size: int = 8, device: str="cpu"):
-        encoder = Encoder.by_name(encoder_name)()
+    def predict(self, input: List[str], suw_tokenizer: str, suw_tokenizer_option: dict, encoder_name: str, batch_size: int = 8, device: str="cpu", **kwargs):
+        encoder = Encoder.by_name(encoder_name)(**kwargs)
         tokenizer = SUWTokenizer.by_name(suw_tokenizer)(**suw_tokenizer_option)
 
         data = [tokenizer.tokenize(sent) for sent in input]

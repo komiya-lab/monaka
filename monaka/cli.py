@@ -79,23 +79,33 @@ def download(target: str, dtype: DownloadType = typer.Option(DownloadType.UniDic
 
 @app.command()
 def parse(model_dir: Path, inputs: List[str], device: str="cpu", batch: int=8, output_format: str="jsonl",
-          tokenizer: str="mecab", dic: str="gendai"):
+          tokenizer: str="mecab", dic: str="gendai", 
+          node_format: str='%m\t%f[9]\t%f[6]\t%f[7]\t%F-[0,1,2,3]\t%f[4]\t%f[5]\t%f[13]\t%f[27]\t%f[28]\n',
+          unk_format: str='%m\t%m\t%m\t%m\tUNK\t%f[4]\t%f[5]\t\n',
+          eos_format: str='EOS\n',
+          bos_format: str=''
+          ):
     predictor = Predictor(model_dir=model_dir)
     if len(inputs) == 1 and os.path.exists(inputs[0]):
         with open(inputs[0]) as f:
             inputs_ = [line.strip() for line in f]
     else:
         inputs_ = inputs
-    for r in predictor.predict(inputs_, suw_tokenizer=tokenizer, suw_tokenizer_option={"dic": dic}, device=device, batch_size=batch, encoder_name=output_format):
+    for r in predictor.predict(inputs_, suw_tokenizer=tokenizer, suw_tokenizer_option={"dic": dic}, device=device, batch_size=batch, encoder_name=output_format, node_format=node_format, unk_format=unk_format, eos_format=eos_format, bos_format=bos_format):
         print(r)
 
 @app.command()
 def predict(model_dir: Path, input_file: Path, device: str="cpu", batch: int=8, output_format: str="jsonl",
-          tokenizer: str="mecab", dic: str="gendai"):
+          tokenizer: str="mecab", dic: str="gendai", 
+          node_format: str='%m\t%f[9]\t%f[6]\t%f[7]\t%F-[0,1,2,3]\t%f[4]\t%f[5]\t%f[13]\t%f[27]\t%f[28]\n',
+          unk_format: str='%m\t%m\t%m\t%m\tUNK\t%f[4]\t%f[5]\t\n',
+          eos_format: str='EOS\n',
+          bos_format: str=''
+          ):
     with open(input_file) as f:
         inputs = [json.loads(line)["sentence"] for line in f]
     predictor = Predictor(model_dir=model_dir)
-    for r in predictor.predict(inputs, suw_tokenizer=tokenizer, suw_tokenizer_option={"dic": dic}, device=device, batch_size=batch, encoder_name=output_format):
+    for r in predictor.predict(inputs, suw_tokenizer=tokenizer, suw_tokenizer_option={"dic": dic}, device=device, batch_size=batch, encoder_name=output_format, node_format=node_format, unk_format=unk_format, eos_format=eos_format, bos_format=bos_format):
         print(r)
 
 
