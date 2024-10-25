@@ -8,6 +8,7 @@ import csv
 import glob
 import json
 import torch
+import ipadic
 import fugashi
 import numpy as np
 
@@ -426,7 +427,10 @@ class MecabSUWTokenizer(SUWTokenizer):
         dicdir = os.path.join(RESC_DIR, dic)
         mecabrc = os.path.join(RESC_DIR, "mecabrc")
         mecab_option = f"-r {mecabrc} -d {dicdir}"
-        self.mecab = fugashi.GenericTagger(mecab_option)
+        if dic == 'ipadic':
+            self.mecab = fugashi.GenericTagger(ipadic.MECAB_ARGS)
+        else:
+            self.mecab = fugashi.GenericTagger(mecab_option)
 
     @staticmethod
     def get_pos(feature):
