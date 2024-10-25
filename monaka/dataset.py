@@ -9,6 +9,7 @@ import torch.distributed as dist
 from typing import Union, List, Dict, Optional
 from monaka.tokenizer import Tokenizer
 from monaka.mylogging import logger
+from transformers import  AutoTokenizer
 
 
 
@@ -19,6 +20,7 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
         "sentence": str,   # 文そのもの
         "tokens": [str, ]  # 短単位のリスト
         "pos": [str, ]     # 形態論情報(短単位)
+        "lemma": [str,]    # 語彙素原形(必須フィールドではない)
         "labels": [str, ]  # ラベル。短単位ごとに付与
     }
 
@@ -106,7 +108,6 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
         if len(js["pos"]) != len(js["tokens"]):
             self.logger.warn(f'skip loading {js["sentence"]} because of pos {len(js["pos"])} and token {len(js["tokens"])} length unmatch')
             return
-        
         if len(js["pos"]) == 0:
             self.logger.warn(f'skip loading {js["sentence"]} because there is no token.')
             return
@@ -114,6 +115,28 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
         js["subwords"] = self.to_token_ids(js["tokens"], js["pos"] if self.pos_as_tokens else None)
         js["input_ids"] = torch.LongTensor(js["subwords"]["input_ids"])
         js["label_ids"] = self.to_label_ids(js["labels"], js["subwords"].word_ids() if self.label_for_all_subwords else None) if "labels" in js else None
+
+
+        if "lemma" in js:
+            js["lemma_subwords"] = self.to_token_ids(js["lemma"])
+            js["lemma_ids"] = []
+            #torch.LongTensor(js["lemma_subwords"]["input_ids"]) # lemma size list of subword list
+            sub_idx = js["lemma_subwords"]["input_ids"]
+            w_idx = js["subwords"].word_ids()
+            l_idx = js["lemma_subwords"].word_ids()
+            if len(l_idx) == 0:
+                self.logger.warn(f"no lemma: {js['lemma']}")
+                return
+
+            for i in range(max(l_idx) + 1):
+                js["lemma_ids"].append(torch.LongTensor([sid for sid, wid in zip(sub_idx, l_idx) if wid == i]))
+            
+            js["lemma_target"] = [js["lemma_id"][i] for i in w_idx]
+            #for l_subs, lid in zip(js["lemma_subwords"].word_ids(), js["lemma_id"]):
+            #    js["lemma_target"].extend([lid for _ in range(len(l_subs))])
+        
+            #print(len(js["lemma_target"] ), len(js["input_ids"] ))
+
         if self.pos_dic:
             js["pos_ids"] = self.to_pos_ids(js["pos"], js["subwords"].word_ids() if self.label_for_all_subwords else None) 
 
@@ -199,3 +222,95 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
         return self.sentences[index]
 
 
+class LemmaJsonDataset(torch.utils.data.Dataset):
+    r"""
+    Json形式のデータセット 
+    "key (全情報)": {
+        "surface": "やまとうた", # 表層形
+        "lemma": "やまと歌",  #  長単位原形
+        "pos": "名詞-普通名詞-一般", # 品詞
+        "suw": [
+        {
+            "pos": "名詞-固有名詞-地名-一般", # 短単位品詞
+            "lemma": "ヤマト", # 短単位原形
+            "surface": "やまと"# 短単位原形
+        },
+        {
+            "pos": "名詞-普通名詞-一般", # 短単位品詞
+            "lemma": "歌", # 短単位原形
+            "surface": "うた" # 短単位原形
+        }
+        ],
+        "input": "pos: 名詞-普通名詞-一般 surface: やまとうた suw_pos: 名詞-固有名詞-地名-一般 名詞-普通名詞-一般 suw_surface: やまと うた suw_lemma: ヤマト 歌" #入力形式
+    }
+
+    Args:
+        jsonfiles (str or list[str]):
+            読み込み対象のファイル名（のリスト)
+        transformer_name (str):
+            Transformers.from_pretrainedで読めるもの
+        fields (List[str]):
+            指定したフィールドをjsonから取得し、入力に変換する
+        kwargs (dict):
+            Keyword arguments that will be passed into :meth:`transform.load` together with `data`
+            to control the loading behaviour.
+
+    Attributes:
+    """
+    def __init__(self, jsonfiles: Union[str, List[str]], transformer_name: str, max_length: int=512, fields: Optional[List[str]]=None, logger=logger,
+                 **kwargs):
+        
+        self.lemma = list()
+        self.max_length = max_length
+        self.tokenizer = AutoTokenizer.from_pretrained(transformer_name)
+        if isinstance(jsonfiles, str):
+            self.load_data(jsonfiles, fields)
+        else:
+            for jsfile in jsonfiles:
+                self.load_data(jsfile, fields) 
+
+    def __getitem__(self, idx):
+        if np.random.random() < 0.1:
+            t = f"input: {self.lemma[idx]['input']} target: {self.lemma[idx]['target']}"
+            #print(t)
+            logger.info(t)
+        return self.lemma[idx]
+    
+    def __len__(self):
+        return len(self.lemma)
+
+    @staticmethod
+    def to_label(data: Dict, fields: Optional[List[str]]):
+        if fields is None:
+            return data["input"]
+        
+        inputs: List[str] = list()
+        for field in fields:
+            if not field.startswith("suw_"):
+                t = f"{field}: {data.get(field, '')}"
+                inputs.append(t)
+                continue
+
+            starget = field.split("_")[1]
+            vals = [suw[starget] for suw in data["suw"]]
+            inputs.append(f'{field}: {" ".join(vals)}')
+        
+        return " ".join(inputs)
+    
+    def load_data(self, fname: str, fields: Optional[List[str]]):
+        with open(fname) as f:
+            data: Dict = json.load(f)
+
+        for val in data.values():
+            d = {
+                "input": self.to_label(val, fields),
+                "target": val["lemma"]
+            }
+            d["subwords"] = self.tokenizer(d["input"], max_length=self.max_length, padding='max_length', truncation=True)
+            d["input_ids"] =torch.LongTensor(d["subwords"]["input_ids"])
+            d["attntion_mask"] = torch.tensor(d["subwords"]["attention_mask"])
+            d["target_subwords"] = self.tokenizer(d["target"], max_length=self.max_length, padding='max_length')
+            d["labels"] = d["target_subwords"]["input_ids"]
+            #d["decoder_input_ids"] = d["target_subwords"]["input_ids"]
+            self.lemma.append(d)
+        

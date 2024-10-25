@@ -8,4 +8,6 @@ tqdm
 registrable
 transformers==4.35.0
 tensorboard
+setencepiece
+accelerate
 rich

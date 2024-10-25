@@ -7,7 +7,7 @@ import enum
 from pathlib import Path
 from typing import List, Optional
 from rich.progress import Progress
-from monaka.predictor import Predictor, RESC_DIR, Encoder, Decoder
+from monaka.predictor import Predictor, LemmaPredictor, RESC_DIR, Encoder, Decoder
 from monaka.metric import SpanBasedMetricReporter
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
@@ -97,6 +97,17 @@ def predict(model_dir: Path, input_file: Path, device: str="cpu", batch: int=8, 
     predictor = Predictor(model_dir=model_dir)
     for r in predictor.predict(inputs, suw_tokenizer=tokenizer, suw_tokenizer_option={"dic": dic}, device=device, batch_size=batch, encoder_name=output_format):
         print(r)
+
+
+@app.command()
+def predict_lemma(model_dir: Path, input: str):
+    predictor = LemmaPredictor(model_dir=model_dir)
+    print(predictor.predict(input))
+
+@app.command()
+def evaluate_lemma(model_dir, inputfile: str):
+    predictor = LemmaPredictor(model_dir=model_dir)
+    print(json.dumps(predictor.evaluate(inputfile), indent=True, ensure_ascii=False))
 
 
 @app.command()

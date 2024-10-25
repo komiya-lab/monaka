@@ -1,0 +1,18 @@
+{
+    "train_files": [""],
+    "dev_files": [""],
+    "test_files": null,
+    "dataset_options" :{
+        "transformer_name": "sonoisa/t5-base-japanese",
+        "max_length": 128,
+        "fields": ["pos", "surface", "suw_pos", "suw_lemma"]
+    },
+    "model_name": "sonoisa/t5-base-japanese",
+    "model_config": {},
+    "batch_size": 24,
+    "epochs": 10,
+    "lr": 2e-5,
+    "decay": 0.75,
+    "decay_steps": 5000,
+    "evaluate_step": 500
+}
