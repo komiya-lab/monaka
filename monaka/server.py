@@ -28,5 +28,8 @@ def parse2json(modelname, dicname):
     )
     
 
-if __name__ == '__main__':
+def run():
     app.run()
+
+if __name__ == '__main__':
+    run()

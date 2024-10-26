@@ -119,7 +119,7 @@ def request(inputs: List[str], model: str="all_in_one", server:str="http://127.0
           bos_format: str=''
     ):
     url = urllib.parse.urljoin(server, f"/model/{model}/dic/{dic}/parse")
-    print(url, file=sys.stderr)
+    #print(url, file=sys.stderr)
     req = {
         "sentence": inputs,
         "output_format": output_format,
@@ -128,7 +128,7 @@ def request(inputs: List[str], model: str="all_in_one", server:str="http://127.0
         "eos_format": eos_format,
         "bos_format": bos_format
     }
-    print(req, file=sys.stderr)
+    #print(req, file=sys.stderr)
     r = requests.post(url, json=req)
     print(r.text)
 

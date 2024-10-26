@@ -27,7 +27,7 @@ setuptools.setup(
         "console_scripts":[
             "monaka_train = monaka.train_cli:app",
             "monaka = monaka.cli:app",
-            "monaka_server = monaka.server:app"
+            "monaka_server = monaka.server:run"
         ],
     },
     project_urls={
