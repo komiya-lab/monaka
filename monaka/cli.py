@@ -1,8 +1,11 @@
 import os
 import sys
+import urllib.parse
 import typer
 import json
 import enum
+import urllib
+import requests
 
 from pathlib import Path
 from typing import List, Optional
@@ -106,6 +109,29 @@ def parse(model_dir: Path, inputs: List[str], device: str="cpu", batch: int=8, o
         inputs_ = inputs
     for r in predictor.predict(inputs_, suw_tokenizer=tokenizer, suw_tokenizer_option={"dic": dic}, device=device, batch_size=batch, encoder_name=output_format, node_format=node_format, unk_format=unk_format, eos_format=eos_format, bos_format=bos_format):
         print(r)
+
+@app.command()
+def request(inputs: List[str], model: str="all_in_one", server:str="http://127.0.0.1:5000", output_format: str="jsonl",
+          dic: str="gendai", 
+          node_format: str='%m\t%f[9]\t%f[6]\t%f[7]\t%F-[0,1,2,3]\t%f[4]\t%f[5]\t%f[13]\t%f[26]\t%f[27]\t%f[28]\n',
+          unk_format: str='%m\t%m\t%m\t%m\tUNK\t%f[4]\t%f[5]\t\n',
+          eos_format: str='EOS\n',
+          bos_format: str=''
+    ):
+    url = urllib.parse.urljoin(server, f"/model/{model}/dic/{dic}/parse")
+    print(url, file=sys.stderr)
+    req = {
+        "sentence": inputs,
+        "output_format": output_format,
+        "node_format": node_format,
+        "unk_format": unk_format,
+        "eos_format": eos_format,
+        "bos_format": bos_format
+    }
+    print(req, file=sys.stderr)
+    r = requests.post(url, json=req)
+    print(r.text)
+
 
 @app.command()
 def predict(model_dir: Path, input_file: Path, device: str="cpu", batch: int=8, output_format: str="jsonl",
