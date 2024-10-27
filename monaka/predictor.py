@@ -276,6 +276,8 @@ class MeCabEncoder(Encoder):
         %pL	形態素の表層文字列としての長さ, ただし空白文字列も含む, strlen(%M) と同一
         %phl	左文脈 id
         %phr	右文脈 id
+        %b  文節情報
+        %l  長単位情報
         %f[N]	csv で表記された素性の N番目の要素
         %f[N1,N2,N3...]	N1,N2,N3番目の素性を, "," を デリミタとして表示
         %FC[N1,N2,N3...]	N1,N2,N3番目の素性を, C を デリミタとして表示.
@@ -330,6 +332,8 @@ class MeCabEncoder(Encoder):
         output = output.replace('%pL', str(len(token)))
         output = output.replace('%phl', '0')
         output = output.replace('%phr', '0')
+        output = output.replace('%b', c)
+        output = output.replace('%l', l)
         output = output.replace('\s', ' ')
         
         for m in self.f_matcher.finditer(output):

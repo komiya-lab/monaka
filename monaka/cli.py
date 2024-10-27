@@ -96,7 +96,7 @@ def download(target: str, dtype: DownloadType = typer.Option(DownloadType.UniDic
 @app.command()
 def parse(model_dir: Path, inputs: List[str], device: str="cpu", batch: int=8, output_format: str="jsonl",
           tokenizer: str="mecab", dic: str="gendai", 
-          node_format: str='%m\t%f[9]\t%f[6]\t%f[7]\t%F-[0,1,2,3]\t%f[4]\t%f[5]\t%f[13]\t%f[27]\t%f[28]\n',
+          node_format: str='%m\t%f[9]\t%f[6]\t%f[7]\t%F-[0,1,2,3]\t%f[4]\t%f[5]\t%f[13]\t%l\t%b\n',
           unk_format: str='%m\t%m\t%m\t%m\tUNK\t%f[4]\t%f[5]\t\n',
           eos_format: str='EOS\n',
           bos_format: str=''
