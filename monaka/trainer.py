@@ -179,6 +179,8 @@ class SegmentationTrainer(Trainer):
             logger.info(f"Epoch {epoch} / {self.epochs}:")
 
             for i, data in tqdm.tqdm(enumerate(train_loader)):
+                if 'input_ids' not in data:
+                    logger.error(data)
                 subwords = pad_sequence(data["input_ids"], batch_first=True, padding_value=self.train_data.pad_token_id).to(device)
                 word_ids = pad_sequence([torch.LongTensor(js.word_ids()) for js in data["subwords"]], batch_first=True, padding_value=-1).to(device)
                 label_ids = pad_sequence(data["label_ids"], batch_first=True, padding_value=1).to(device)
