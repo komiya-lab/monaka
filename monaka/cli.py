@@ -7,6 +7,7 @@ import enum
 from pathlib import Path
 from typing import List, Optional
 from rich.progress import Progress
+from prettytable import PrettyTable
 from monaka.predictor import Predictor, LemmaPredictor, RESC_DIR, Encoder, Decoder
 from monaka.metric import SpanBasedMetricReporter
 
@@ -29,6 +30,10 @@ UNIDIC_URLS = {
     "manyo": UNIDIC_URL + "2203/UniDic-202203_10_jodai.zip"
 }
 prv = 0
+
+class OutputFormat(str, enum.Enum):
+    json = "json"
+    pretty = "pretty"
 
 @app.command()
 def download(target: str, dtype: DownloadType = typer.Option(DownloadType.UniDic, case_sensitive=False)):
@@ -98,16 +103,87 @@ def predict(model_dir: Path, input_file: Path, device: str="cpu", batch: int=8, 
     for r in predictor.predict(inputs, suw_tokenizer=tokenizer, suw_tokenizer_option={"dic": dic}, device=device, batch_size=batch, encoder_name=output_format):
         print(r)
 
+@app.command()
+def predict_raw(model_dir: Path, input_file: Path, device: str="cpu", batch: int=8, output_format: str="jsonl"):
+    predictor = Predictor(model_dir=model_dir)
+    for r in predictor.predict_raw(input_file, device=device, batch_size=batch, encoder_name=output_format):
+        print(r)
+
 
 @app.command()
-def predict_lemma(model_dir: Path, input: str):
-    predictor = LemmaPredictor(model_dir=model_dir)
-    print(predictor.predict(input))
+def predict_lemma(model_dir: Path, input: str, device: str='cpu'):
+    predictor = LemmaPredictor(model_dir=model_dir, device=device)
+    if os.path.exists(input):
+        res = dict()
+        with open(input) as f:
+            js = json.load(f)
+        for k, v in js.items():
+            u = dict()
+            u.update(v)
+            if 'lemma' in u:
+                del u['lemma']
+            lemma = predictor.predict([{k:u}])
+            v['lemma'] = lemma
+            res[k] = v
+        print(json.dumps(res, indent=True, ensure_ascii=False)) 
+    else:
+        print(predictor.predict([json.loads(input)]))
+
+
+def _eval_lemma(test_js, pred_js, target=None):
+    a = 0
+    c = 0
+    suw_c = 0
+    surface_c = 0
+    diffs = list()
+    for k, d in test_js.items():
+        if target is not None and not d['pos'].startswith(target):
+            continue
+
+        a += 1
+        if k not in pred_js:
+            continue
+
+        
+        dd = pred_js[k]
+        if d['lemma'].strip() == dd['lemma'].strip():
+            c += 1
+        else:
+            diffs.append((d['lemma'].strip(), dd['lemma'].strip()))
+        if dd['surface'].strip() == d['lemma'].strip():
+            surface_c += 1
+        suw_lemma = ''.join([v['lemma'] for v in dd['suw']])
+        if d['lemma'].strip() == suw_lemma.strip():
+            suw_c += 1
+
+    res = {'acc': c/a, "count": c, "total": a, "suw_count": suw_c, "surface_count": surface_c,
+           'surface_acc': surface_c/a, 'suw_acc': suw_c/a, "diff": diffs}
+    return res
 
 @app.command()
-def evaluate_lemma(model_dir, inputfile: str):
-    predictor = LemmaPredictor(model_dir=model_dir)
-    print(json.dumps(predictor.evaluate(inputfile), indent=True, ensure_ascii=False))
+def evaluate_lemma(testfile: str, predfile: str, output_format: OutputFormat=OutputFormat.json):
+    with open(testfile) as f:
+        test_js = json.load(f)
+
+    with open(predfile) as f:
+        pred_js = json.load(f)
+
+    res = _eval_lemma(test_js, pred_js)
+    res['NOUN'] = _eval_lemma(test_js, pred_js, '名詞-普通名詞')
+    res['PROPN'] = _eval_lemma(test_js, pred_js, '名詞-固有名詞')
+    res['VERB'] = _eval_lemma(test_js, pred_js, '動詞-一般')
+    res['AUX'] = _eval_lemma(test_js, pred_js, '助動詞')
+    res['ADJ'] = _eval_lemma(test_js, pred_js, '形容詞-一般')
+
+    if output_format == OutputFormat.pretty:
+        keys = list(res.keys())
+        rep = PrettyTable(ield_names=keys)
+        rep.add_row([res[k] for k in keys])
+        print(rep)
+
+    else:
+        print(json.dumps(res, indent=True, ensure_ascii=False))
+
 
 
 @app.command()

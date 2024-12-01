@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import json
+from pathlib import Path
 from collections import namedtuple
 
 import numpy as np
@@ -72,7 +73,7 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
         else:
             self.pos_dic = None
         
-        if isinstance(jsonlfiles, str):
+        if isinstance(jsonlfiles, (str, Path)):
             self.logger.info(f"loading {jsonlfiles}")
             self.load(jsonlfiles)
         elif isinstance(jsonlfiles, list):
@@ -257,7 +258,7 @@ class LemmaJsonDataset(torch.utils.data.Dataset):
 
     Attributes:
     """
-    def __init__(self, jsonfiles: Union[str, List[str]], transformer_name: str, max_length: int=512, fields: Optional[List[str]]=None, logger=logger,
+    def __init__(self, jsonfiles: Union[str, List[Union[str, Dict]]], transformer_name: str, max_length: int=512, fields: Optional[List[str]]=None, logger=logger,
                  **kwargs):
         
         self.lemma = list()
@@ -267,7 +268,10 @@ class LemmaJsonDataset(torch.utils.data.Dataset):
             self.load_data(jsonfiles, fields)
         else:
             for jsfile in jsonfiles:
-                self.load_data(jsfile, fields) 
+                if isinstance(jsfile, str):
+                    self.load_data(jsfile, fields)
+                else:
+                    self.load_dict(jsfile, fields)
 
     def __getitem__(self, idx):
         if np.random.random() < 0.1:
@@ -301,16 +305,20 @@ class LemmaJsonDataset(torch.utils.data.Dataset):
         with open(fname) as f:
             data: Dict = json.load(f)
 
+        self.load_dict(data, fields)
+
+    def load_dict(self, data: Dict, fields: Optional[List[str]]):
         for val in data.values():
             d = {
                 "input": self.to_label(val, fields),
-                "target": val["lemma"]
+                "target": val["lemma"] if 'lemma' in val else None
             }
-            d["subwords"] = self.tokenizer(d["input"], max_length=self.max_length, padding='max_length', truncation=True)
-            d["input_ids"] =torch.LongTensor(d["subwords"]["input_ids"])
-            d["attntion_mask"] = torch.tensor(d["subwords"]["attention_mask"])
-            d["target_subwords"] = self.tokenizer(d["target"], max_length=self.max_length, padding='max_length')
-            d["labels"] = d["target_subwords"]["input_ids"]
+            d["subwords"] = self.tokenizer(d["input"], max_length=self.max_length, padding='max_length', truncation=True, return_tensors="pt")
+            d["input_ids"] =torch.LongTensor(d["subwords"]["input_ids"][0])
+            d["attention_mask"] = torch.tensor(d["subwords"]["attention_mask"])
+            d["target_subwords"] = self.tokenizer(d["target"], max_length=self.max_length, padding='max_length') if d['target'] is not None else None
+            if d['target'] is not None:
+                d["labels"] = d["target_subwords"]["input_ids"]
             #d["decoder_input_ids"] = d["target_subwords"]["input_ids"]
             self.lemma.append(d)
         

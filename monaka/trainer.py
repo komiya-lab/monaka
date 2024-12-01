@@ -508,14 +508,15 @@ class LemmaDeocderTrainer(Trainer):
             max_steps = steps,
             evaluation_strategy="steps",
             per_device_train_batch_size = batch_size,
-            per_device_eval_batch_size = 2,
+            per_device_eval_batch_size = batch_size,
             eval_accumulation_steps = 100,
             learning_rate = lr,
             weight_decay = decay,
-            save_steps = evaluate_step * 4,
+            save_steps = evaluate_step,
             eval_steps=evaluate_step,
             logging_dir=output_dir,
             seed=seed,
+            predict_with_generate=True,
             do_eval = True
         )
         logger.info(train_files)
@@ -540,7 +541,7 @@ class LemmaDeocderTrainer(Trainer):
 
         # decode preds and labels
         labels = np.where(labels != -100, labels, self.tokenizer.pad_token_id)
-        decoded_preds = self.tokenizer.batch_decode(preds_[0], skip_special_tokens=True)
+        decoded_preds = self.tokenizer.batch_decode(preds_, skip_special_tokens=True)
         decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
         correct = [1 for p,l in zip(decoded_preds, decoded_labels) if p.strip() == l.strip()]
         return {"accuracy": len(correct) / len(decoded_preds), "preds": decoded_preds, "labels": decoded_labels}

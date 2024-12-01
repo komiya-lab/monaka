@@ -408,6 +408,40 @@ class Predictor:
                 res["sentence"] = sentence
                 yield encoder.encode(**res)
 
+    def predict_raw(self, input: str, encoder_name: str, batch_size: int = 8, device: str="cpu"):
+        print(input, file=sys.stderr)
+        encoder = Encoder.by_name(encoder_name)()
+
+        dataset = LUWJsonLDataset(input, **self.dataeset_options)
+        dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=LUWJsonLDataset.collate_function)
+
+
+        init_device(device)
+        try:
+            device = int(device)
+        except:
+            pass
+        self.model.to(device)
+
+
+        for data in dataloader:
+            #word_ids = [sbw.word_ids() for sbw in data["subwords"]]
+            subwords = pad_sequence(data["input_ids"], batch_first=True, padding_value=dataset.pad_token_id).to(device)
+            word_ids = pad_sequence([torch.LongTensor(js.word_ids()) for js in data["subwords"]], batch_first=True, padding_value=-1).to(device)
+            pos_ids = pad_sequence(data["pos_ids"], batch_first=True, padding_value=1).to(device) if "pos_ids" in data else None
+
+            out = self.model(subwords, word_ids, pos_ids)
+            pred = torch.argmax(out, dim=-1) # batch, len, 
+
+            pred_np = pred.detach().cpu().numpy()
+            for prd, wids, sentence, tokens, pos in zip(pred_np, word_ids, data["sentence"], data["tokens"], data["pos"]):
+                if not dataset.label_for_all_subwords:
+                    labels = self.extract_labels(None, prd)
+                else:
+                    labels = self.extract_labels(wids, prd)
+                res = self.decoder.decode(tokens, pos, labels)
+                res["sentence"] = sentence
+                yield encoder.encode(**res)
 
     def evaluate(self, inputfile: str, batch_size: int = 8, device: str="cpu", targets: List[str]=("luw", "chunk"), pos_level: int = -1, format_: str="pretty", 
                 suw_tokenizer: str=None, suw_tokenizer_option: dict=None, outputfile: str=None):
@@ -483,31 +517,86 @@ class Predictor:
         if outputfile is not None:
             output.close()
 
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, AutoConfig
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, AutoConfig, Seq2SeqTrainer, Seq2SeqTrainingArguments
 from torch.utils.data import DataLoader
+
 class LemmaPredictor:
 
-    def __init__(self, model_dir: str) -> None:
+    def __init__(self, model_dir: str, device='cpu') -> None:
         self.model_dir = model_dir
+        self.device = device
         with open(os.path.join(model_dir, "config.json")) as f:
             self.config = json.load(f)
-        self.model = AutoModelForSeq2SeqLM.from_pretrained(os.path.join(model_dir, "last-checkpoint"))
-        print(type(self.model))
+        self.model = AutoModelForSeq2SeqLM.from_pretrained(os.path.join(model_dir, "last-checkpoint")).to(device)
+        #print(type(self.model))
         self.tokenizer = AutoTokenizer.from_pretrained(self.config['model_name'])
+        self.special_tokens = list(self.tokenizer.all_special_tokens)
+        self.special_tokens.extend([" ", "▁", "_"])
+        self.trainer = Seq2SeqTrainer(self.model, Seq2SeqTrainingArguments(".", per_device_eval_batch_size=8, predict_with_generate=True))
 
-    def predict(self, input: str) -> str:
-        print(input)
-        subwords = self.tokenizer([input], max_length=self.config['dataset_options']["max_length"], padding='max_length', truncation=True)
-        print(self.tokenizer.decode(subwords.input_ids[0]))
-        outputs = self.model.generate(torch.LongTensor(subwords.input_ids))
-        print(outputs)
+    def predict(self, input: Dict) -> str:
+        dataset = LemmaJsonDataset(input, **self.config['dataset_options'])
+        #print(dataset[0])
+        #print(dataset[0]['input_ids'].size())
+        #preds = self.trainer.predict(test_dataset=dataset)
+        #preds_ = [np.argmax(prd, axis=-1) for prd in preds]
+        #decoded_preds = self.tokenizer.batch_decode(preds_[0], skip_special_tokens=True)
+        #return decoded_preds[0]
+
+        #print(input)
+        data = dataset[0]
+        #print(data['input_ids'].size())
+        inp = self.tokenizer.decode(data['input_ids'])
+        print(inp)
+        if '<unk>' in inp:
+            return ''.join([v['lemma'] for v in data['suw']])
+        outputs = self.model.generate(data['input_ids'].unsqueeze(0).to(self.device), 
+                                      attention_mask=data['attention_mask'].to(self.device),
+                                      do_sample=False)
+        #print(outputs)
         print(self.tokenizer.decode(outputs[0], skip_special_tokens=False))
-        return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        tokens = self.tokenizer.convert_ids_to_tokens(outputs[0], skip_special_tokens=False)
+        output = []
+        for t in tokens:
+            if t not in self.special_tokens:
+                output.append(t)
+            else:
+                if len(output) == 0:
+                    continue
+                else:
+                    break
+        o ="".join(output)
+        #print(o.replace("▁", ""))
+        return o.replace("▁", "")
     
-    def batch_predict(self, inputs: List[str]) -> List[str]:
-        subwords = self.tokenizer(inputs, max_length=self.config['dataset_options']["max_length"], padding='max_length', truncation=True, return_tensors="pt")
-        outputs = self.model.generate(subwords)
-        return self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
+    def tokens2output(self, tokens: List[str]) -> str:
+        output = []
+        for t in tokens:
+            if t not in self.special_tokens:
+                output.append(t)
+            else:
+                if len(output) == 0:
+                    continue
+                else:
+                    break
+        o ="".join(output)
+        #print(o.replace("▁", ""))
+        return o.replace("▁", "")
+    
+    def batch_predict(self, inputs: Dict) -> List[str]:
+        dataset = LemmaJsonDataset(input, **self.config['dataset_options'])
+        loader = DataLoader(dataset=dataset, batch_size=self.config['batch_size'], shuffle=False)
+        #print(data['input_ids'].size())
+        res = list()
+        for data in loader:
+            #print(self.tokenizer.decode(data['input_ids']))
+            outputs = self.model.generate(data['input_ids'].to(self.device), 
+                                        attention_mask=data['attention_mask'].to(self.device),
+                                        do_sample=False)
+            #print(outputs)
+            #print(self.tokenizer.decode(outputs[0], skip_special_tokens=False))
+            for output in outputs:
+                res.append(self.tokens2output(self.tokenizer.convert_ids_to_tokens(output, skip_special_tokens=False)))
     
     def evaluate(self, jsonfile: str) -> Dict:
         dataset = LemmaJsonDataset(jsonfile, **self.config['dataset_options'])

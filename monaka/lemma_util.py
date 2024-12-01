@@ -258,6 +258,24 @@ def parse_cejc(output: Path, cabocha_files: List[Path]):
         json.dump(res, f, indent=True, ensure_ascii=False)
 
 
+@app.command()
+def impute_eval_pred(inputfile: str, predfile:str, outputfile: str):
+    with open(inputfile) as f:
+        js = json.load(f)
+    with open(predfile) as f:
+        pred = json.load(f)
+
+    out = dict()
+    for p, (k,v) in zip(pred['eval_preds'], js.items()):
+        u = dict()
+        u.update(v)
+        u['lemma'] = p
+        out[k] = u
+
+    with open(outputfile, 'w') as f:
+        json.dump(out, f, indent=True, ensure_ascii=False)
+
+
 if __name__ == "__main__":
     app()
 
