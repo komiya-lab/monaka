@@ -9,10 +9,10 @@
     },
     "model_name": "sonoisa/t5-base-japanese",
     "model_config": {},
-    "batch_size": 8,
-    "epochs": 20,
+    "batch_size": 24,
+    "epochs": 10,
     "lr": 2e-5,
-    "decay": 0.75,
+    "decay": 0.01,
     "decay_steps": 5000,
     "evaluate_step": 500
 }

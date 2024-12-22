@@ -42,7 +42,11 @@ try:
                 s=t.find(c,e)
                 e=e if s<0 else s+len(c)
                 z.append((0,0) if s<0 else (s,e))
-            return [normalized_string[s:e] for s,e in z if e>0]
+            out = [normalized_string[s:e] for s,e in z if e>0]
+            if len(out) > 0:
+                return out
+            else:
+                return [normalized_string]
         
         def pre_tokenize(self,pretok):
             pretok.split(self.mecab_split)

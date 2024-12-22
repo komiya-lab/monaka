@@ -276,6 +276,8 @@ class MeCabEncoder(Encoder):
         %pL	形態素の表層文字列としての長さ, ただし空白文字列も含む, strlen(%M) と同一
         %phl	左文脈 id
         %phr	右文脈 id
+        %b  文節情報
+        %l  長単位情報
         %f[N]	csv で表記された素性の N番目の要素
         %f[N1,N2,N3...]	N1,N2,N3番目の素性を, "," を デリミタとして表示
         %FC[N1,N2,N3...]	N1,N2,N3番目の素性を, C を デリミタとして表示.
@@ -286,7 +288,7 @@ class MeCabEncoder(Encoder):
         """
         f = list()
         f.extend(feat)
-        f.extend((l, c))
+        #f.extend((l, c))
 
         output = fstring.replace('\\0', '\0')
         output = output.replace('\\a', '\a')
@@ -302,7 +304,7 @@ class MeCabEncoder(Encoder):
         output = output.replace('%s', str(m_type))
         output = output.replace('%L', str(len(sentence)))
         output = output.replace('%m', token.strip())
-        output = output.replace('%m', token)
+        output = output.replace('%M', token)
         output = output.replace('%h', '0')
         output = output.replace('%%', '%')
         output = output.replace('%c', '1')
@@ -330,19 +332,21 @@ class MeCabEncoder(Encoder):
         output = output.replace('%pL', str(len(token)))
         output = output.replace('%phl', '0')
         output = output.replace('%phr', '0')
+        output = output.replace('%b', c)
+        output = output.replace('%l', l)
         output = output.replace('\s', ' ')
         
         for m in self.f_matcher.finditer(output):
             txt = m.group(0)
             index = [int(v) for v in m.group(1).split(',')]
-            vals = [f[i] for i in index]
+            vals = [f[i] if i < len(f) else '*' for i in index]
             output = output.replace(txt, ','.join(vals), 1)
 
         for m in self.fc_matcher.finditer(output):
             txt = m.group(0)
             sep = m.group(1)
             index = [int(v) for v in m.group(2).split(',')]
-            vals = [f[i] for i in index if f[i] not in ('', '*')]
+            vals = [f[i] for i in index if i < len(f) and f[i] not in ('', '*')]
             output = output.replace(txt, sep.join(vals), 1)
 
         return output
@@ -517,6 +521,8 @@ class Predictor:
         tokenizer = SUWTokenizer.by_name(suw_tokenizer)(**suw_tokenizer_option)
 
         data = [tokenizer.tokenize(sent) for sent in input]
+
+        self.dataeset_options['store_all'] = True
         dataset = LUWJsonLDataset(data, **self.dataeset_options)
         dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=LUWJsonLDataset.collate_function)
 
@@ -541,12 +547,15 @@ class Predictor:
             pred = torch.argmax(out, dim=-1) # batch, len, 
 
             pred_np = pred.detach().cpu().numpy()
-            for prd, wids, sentence, tokens, pos, feat in zip(pred_np, word_ids, data["sentence"], data["tokens"], data["pos"], data["features"]):
-                if not dataset.label_for_all_subwords:
-                    labels = self.extract_labels(None, prd)
+            for prd, wids, sentence, tokens, pos, feat, skip in zip(pred_np, word_ids, data["sentence"], data["tokens"], data["pos"], data["features"], data["skip"]):
+                if not skip:
+                    if not dataset.label_for_all_subwords:
+                        labels = self.extract_labels(None, prd)
+                    else:
+                        labels = self.extract_labels(wids, prd)
+                    res = self.decoder.decode(tokens, pos, labels)
                 else:
-                    labels = self.extract_labels(wids, prd)
-                res = self.decoder.decode(tokens, pos, labels)
+                    res = self.decoder.decode(tokens, pos, ['BB*' for _ in tokens])
                 res["sentence"] = sentence
                 res["features"] = feat
                 yield encoder.encode(**res)

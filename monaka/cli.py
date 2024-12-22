@@ -1,8 +1,13 @@
 import os
+os.environ["HF_HOME"]="/var/www/html/chamame-monaka/chamamebin/"
+
 import sys
+import urllib.parse
 import typer
 import json
 import enum
+import urllib
+import requests
 
 from pathlib import Path
 from typing import List, Optional
@@ -41,7 +46,15 @@ UNIDIC_URLS = {
     "10_jodai": UNIDIC_URL + "2203/UniDic-202203_10_jodai.zip",
     "70_waka": UNIDIC_URL + "2308/unidic-waka-v202308.zip",
     "80_kansai_hougen": UNIDIC_URL + "2308/unidic-kansai-v202308.zip"
+<<<<<<< HEAD
+=======
 }
+MODEL_URL = "https://chamame.ninjal.ac.jp/chamame-monaka/"
+MODEL_URLS = {
+    "all_in_one": MODEL_URL + "all_in_one.zip"
+>>>>>>> origin/main
+}
+
 prv = 0
 
 class OutputFormat(str, enum.Enum):
@@ -58,9 +71,9 @@ def download(target: str, dtype: DownloadType = typer.Option(DownloadType.UniDic
     global prv
 
     if dtype == DownloadType.UniDic:
-        if target not in UNIDIC_URLS:
-            print(f"target: {target} is not in the UniDic dictionary name list.", file=sys.stderr)
-        else:
+        if target not in UNIDIC_URLS and target not in MODEL_URLS:
+            print(f"target: {target} is not in the UniDic  dictionary name list or model names.", file=sys.stderr)
+        elif target in UNIDIC_URLS:
             print(f"Downloading {target} UniDic dictionary...")
             url = UNIDIC_URLS[target]
             prv = 0
@@ -93,16 +106,49 @@ def download(target: str, dtype: DownloadType = typer.Option(DownloadType.UniDic
             dicrc = os.path.join(target_dir, "dicrc")
             if not os.path.isfile(dicrc):
                 shutil.copy(os.path.join(target_dir, ".dicrc"), dicrc)
+        elif target in MODEL_URLS:
+            print(f"Downloading {target} UniDic dictionary...")
+            url = MODEL_URLS[target]
+            prv = 0
+            #with typer.progressbar(length=1000, width=64, color=True) as pbar:
+            with Progress() as progress:
+                task = progress.add_task("[red]Downloading...", total=1000)
+                def _progress(block_count: int, block_size: int, total_size: int):
+                    global prv
+                    size = block_size * block_count
+                    val = int(size/total_size*1000)
+                    progress.update(task, advance=val - prv)
+                    prv = val
+                fstr, msg = urllib.request.urlretrieve(url, reporthook=_progress)
+            temp_path = os.path.join(RESC_DIR,".temporary")
+
+            print(f"Extracting {target} the model...")
+            with zipfile.ZipFile(fstr) as z:
+                z.extractall(temp_path)
+
+            target_dir = os.path.join(RESC_DIR, target)
+            if os.path.exists(target_dir):
+                shutil.rmtree(target_dir)
+            extracted = glob.glob(os.path.join(temp_path, "*"))
+            if len(extracted) == 1: # extracted as directory
+                os.rename(extracted[0], target_dir)
+                os.rmdir(temp_path)
+            else:
+                os.rename(temp_path, target_dir)
+        else:
+            pass
 
 
 @app.command()
-def parse(model_dir: Path, inputs: List[str], device: str="cpu", batch: int=8, output_format: str="jsonl",
+def parse(model_dir: str, inputs: List[str], device: str="cpu", batch: int=8, output_format: str="jsonl",
           tokenizer: str="mecab", dic: str="gendai", 
-          node_format: str='%m\t%f[9]\t%f[6]\t%f[7]\t%F-[0,1,2,3]\t%f[4]\t%f[5]\t%f[13]\t%f[27]\t%f[28]\n',
+          node_format: str='%m\t%f[9]\t%f[6]\t%f[7]\t%F-[0,1,2,3]\t%f[4]\t%f[5]\t%f[13]\t%l\t%b\n',
           unk_format: str='%m\t%m\t%m\t%m\tUNK\t%f[4]\t%f[5]\t\n',
           eos_format: str='EOS\n',
           bos_format: str=''
           ):
+    if model_dir in MODEL_URLS:
+        model_dir = os.path.join(RESC_DIR, model_dir)
     predictor = Predictor(model_dir=model_dir)
     if len(inputs) == 1 and os.path.exists(inputs[0]):
         with open(inputs[0]) as f:
@@ -110,7 +156,30 @@ def parse(model_dir: Path, inputs: List[str], device: str="cpu", batch: int=8, o
     else:
         inputs_ = inputs
     for r in predictor.predict(inputs_, suw_tokenizer=tokenizer, suw_tokenizer_option={"dic": dic}, device=device, batch_size=batch, encoder_name=output_format, node_format=node_format, unk_format=unk_format, eos_format=eos_format, bos_format=bos_format):
-        print(r)
+        print(r.rstrip())
+
+@app.command()
+def request(inputs: List[str], model: str="all_in_one", server:str="http://127.0.0.1:5000", output_format: str="jsonl",
+          dic: str="gendai", 
+          node_format: str='%m\t%f[9]\t%f[6]\t%f[7]\t%F-[0,1,2,3]\t%f[4]\t%f[5]\t%f[13]\t%f[26]\t%f[27]\t%f[28]\n',
+          unk_format: str='%m\t%m\t%m\t%m\tUNK\t%f[4]\t%f[5]\t\n',
+          eos_format: str='EOS\n',
+          bos_format: str=''
+    ):
+    url = urllib.parse.urljoin(server, f"/model/{model}/dic/{dic}/parse")
+    #print(url, file=sys.stderr)
+    req = {
+        "sentence": inputs,
+        "output_format": output_format,
+        "node_format": node_format,
+        "unk_format": unk_format,
+        "eos_format": eos_format,
+        "bos_format": bos_format
+    }
+    #print(req, file=sys.stderr)
+    r = requests.post(url, json=req)
+    print(r.text)
+
 
 @app.command()
 def predict(model_dir: Path, input_file: Path, device: str="cpu", batch: int=8, output_format: str="jsonl",

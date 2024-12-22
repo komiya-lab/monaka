@@ -5,7 +5,7 @@ with open("README.md","r",encoding="utf-8") as r:
 
 setuptools.setup(
     name="monaka",
-    version="0.0.4",
+    version="0.0.5",
     description="A Japanese parser (including support for historical Japanese)",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -26,7 +26,8 @@ setuptools.setup(
     entry_points={
         "console_scripts":[
             "monaka_train = monaka.train_cli:app",
-            "monaka = monaka.cli:app"
+            "monaka = monaka.cli:app",
+            "monaka_server = monaka.server:run"
         ],
     },
     project_urls={
@@ -34,16 +35,18 @@ setuptools.setup(
         "Tracker":"https://github.com/komiya-lab/monaka/issues",
     },
     install_requires=[
-        "numpy==1.26.4",
-        "protobuf==4.25.3",
-        "transformers==4.35.0",
+        "numpy<2.0.0",
+        "protobuf",
+        "transformers",
         "registrable",
         "mecab-python3",
         "fugashi",
         "ipadic",
         "typer",
         "torch",
-        "prettytable"
+        "prettytable",
+        "Flask",
+        "requests"
     ],
     extras_require={
         "Train": [
