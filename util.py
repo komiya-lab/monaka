@@ -446,6 +446,68 @@ def jsonl2chj(jsonlfile: str, sep: str="\t"):
                 token.update(meta)
                 writer.writerow([token[k] for k in head])
 
+def comainu_js(js: dict, luw: str, luw_pos: str):
+    files = js['file(S)']
+    p = 0
+    for i, token in enumerate(js['tokens']):
+        token['file(S)'] = files
+        L = token[luw]
+        if L.startswith('B'):
+            p = i
+        if len(token['cForm(S)']) > 1:
+            js['tokens'][p]['l_cForm'] = token['cForm(S)']
+            js['tokens'][p]['l_cType'] = token['sysCType(S)']
+
+        js['tokens'][p]['l_orthToken'] = js['tokens'][p].get('l_orthToken', "") + token['orthToken(S)']
+        js['tokens'][p]['l_reading'] = js['tokens'][p].get('l_reading', "") + token['reading(S)']
+        js['tokens'][p]['l_lemma'] = js['tokens'][p].get('l_lemma', "") + token['lemma(S)']
+
+    return js
+
+
+
+@app.command()
+def jsonl2comainu(jsonfile: str, bunsetsu: str='bunsetsu1(L)_formOrth_all_period', luw: str='luw(L)_formOrth_all_period', luw_pos: str='l_pos(L)_formOrth_all_period'):
+    #file	start	end	BOS	orthToken	reading	lemma	meaning	pos	cType	cForm	usage	pronToken	pronBase	
+    # kana	kanaBase	form	formBase	formOrthBase	formOrth	orthBase	wType	charEncloserOpen	charEncloserClose	
+    # originalText	order	
+    # BOB	LUW	l_orthToken	l_reading	l_lemma	l_pos	l_cType	l_cForm
+    writer = csv.writer(sys.stdout, delimiter='\t')
+    head = [
+        'file(S)', 'start(S)', 'end(S)', 'boundary(S)', 'orthToken(S)', 'reading(S)', 'lemma(S)', 'pos(S)', 'sysCType(S)', 'cForm(S)', 'usage(S)', 'pronToken(S)', 'pronBase(S)',
+        'kanaToken(S)', 'kanaBase(S)', 'formToken(S)', 'formBase(S)', 'formOrthBase(S)', 'formOrth(S)', 'orthBase(S)', 'wType(S)', 'charEncloserOpen', 'charEncloserClose',
+        'originalText(S)', 'order(S)'
+    ]
+    #品詞	活用型	活用形	語彙素読み	語彙素	書辞形
+    with open(jsonfile) as f:
+        for line in f:
+            js = json.loads(line)
+            js = comainu_js(js, luw, luw_pos)
+            for token in js['tokens']:
+                row = [token.get(h, "") for h in head]
+                L = token[luw]
+                Lpos = token[luw_pos]
+                pos = token['pos(S)']
+                row.append(token[bunsetsu]) # BOB
+
+                # LUW
+                if L.startswith('B'):
+                    if Lpos == pos:
+                        row.append('Ba')
+                    else:
+                        row.append('B')
+                    
+                    row.append(token.get('l_orthToken', ''))
+                    row.append(token.get('l_reading', ''))
+                    row.append(token.get('l_lemma', ''))
+                    row.append(Lpos) # l_pos
+                    row.append(token.get('l_cType', '*'))
+                    row.append(token.get('l_cForm', '*'))
+                else:
+                    row.append('I')
+                    row.extend(['*', '*', '*', '*', '*', '*'])
+                writer.writerow(row)
+
 
 @app.command()
 def summarize(jsonfiles: List[str]):

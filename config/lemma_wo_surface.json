@@ -5,14 +5,15 @@
     "dataset_options" :{
         "transformer_name": "sonoisa/t5-base-japanese",
         "max_length": 128,
-        "fields": ["pos", "suw_pos", "suw_surface", "suw_lemma"]
+        "fields": ["pos", "suw_pos", "suw_lemma"]
     },
     "model_name": "sonoisa/t5-base-japanese",
     "model_config": {},
     "batch_size": 24,
+    "steps": 8000,
     "epochs": 10,
     "lr": 2e-5,
-    "decay": 0.75,
+    "decay": 0.01,
     "decay_steps": 5000,
-    "evaluate_step": 500
+    "evaluate_step": 1000
 }

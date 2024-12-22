@@ -11,9 +11,9 @@
     "model_config": {},
     "batch_size": 24,
     "epochs": 50,
-    "steps": 8000,
+    "steps": 40000,
     "lr": 2e-5,
-    "decay": 0.75,
-    "decay_steps": 5000,
-    "evaluate_step": 500
+    "decay": 0.01,
+    "decay_steps": 50000,
+    "evaluate_step": 2000
 }
