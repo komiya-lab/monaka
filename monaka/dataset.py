@@ -52,7 +52,7 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
     """
 
     def __init__(self, jsonlfiles: Union[str, List[str]], label_file: str, pos_file: str, lm_tokenizer: str, lm_tokenizer_config: Dict, max_length: int=1024, pos_as_tokens: bool=False, 
-                 label_for_all_subwords: bool=False, logger=logger,
+                 label_for_all_subwords: bool=False, logger=logger, store_all: bool=False, 
                  **kwargs):
         self.sentences = list()
         self.tokenizer = Tokenizer.by_name(lm_tokenizer)(**lm_tokenizer_config)
@@ -62,6 +62,7 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
         self.max_length = max_length
         self.jsonlfiles = jsonlfiles
         self.logger = logger
+        self.store_all = store_all
 
         with open(label_file) as f:
             self.label_dic = json.load(f)
@@ -105,11 +106,18 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
                 self.load_dict(js)
 
     def load_dict(self, js: dict):
+        js['skip'] = False
         if len(js["pos"]) != len(js["tokens"]):
             self.logger.warn(f'skip loading {js["sentence"]} because of pos {len(js["pos"])} and token {len(js["tokens"])} length unmatch')
+            if self.store_all:
+                js['skip'] = True
+                self.sentences.append(js)
             return
         if len(js["pos"]) == 0:
             self.logger.warn(f'skip loading {js["sentence"]} because there is no token.')
+            if self.store_all:
+                js['skip'] = True
+                self.sentences.append(js)
             return
 
         js["subwords"] = self.to_token_ids(js["tokens"], js["pos"] if self.pos_as_tokens else None)
@@ -126,6 +134,9 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
             l_idx = js["lemma_subwords"].word_ids()
             if len(l_idx) == 0:
                 self.logger.warn(f"no lemma: {js['lemma']}")
+                if self.store_all:
+                    js['skip'] = True
+                    self.sentences.append(js)
                 return
 
             for i in range(max(l_idx) + 1):
@@ -142,6 +153,9 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
 
         if len(js["subwords"].word_ids()) == 0:
             self.logger.warn(f"no words: {js['tokens']}")
+            if self.store_all:
+                js['skip'] = True
+                self.sentences.append(js)
             return
 
         if len(js["pos"]) != np.max(js["subwords"].word_ids()) + 1:

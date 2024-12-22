@@ -1,4 +1,6 @@
 import os
+os.environ["HF_HOME"]="/var/www/html/chamame-monaka/chamamebin/"
+
 import sys
 import urllib.parse
 import typer
@@ -108,7 +110,7 @@ def parse(model_dir: Path, inputs: List[str], device: str="cpu", batch: int=8, o
     else:
         inputs_ = inputs
     for r in predictor.predict(inputs_, suw_tokenizer=tokenizer, suw_tokenizer_option={"dic": dic}, device=device, batch_size=batch, encoder_name=output_format, node_format=node_format, unk_format=unk_format, eos_format=eos_format, bos_format=bos_format):
-        print(r)
+        print(r.rstrip())
 
 @app.command()
 def request(inputs: List[str], model: str="all_in_one", server:str="http://127.0.0.1:5000", output_format: str="jsonl",
