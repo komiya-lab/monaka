@@ -474,7 +474,7 @@ def jsonl2comainu(jsonfile: str, bunsetsu: str='bunsetsu1(L)_formOrth_all_period
     # BOB	LUW	l_orthToken	l_reading	l_lemma	l_pos	l_cType	l_cForm
     writer = csv.writer(sys.stdout, delimiter='\t')
     head = [
-        'file(S)', 'start(S)', 'end(S)', 'boundary(S)', 'orthToken(S)', 'reading(S)', 'lemma(S)', 'pos(S)', 'sysCType(S)', 'cForm(S)', 'usage(S)', 'pronToken(S)', 'pronBase(S)',
+        'file(S)', 'start(S)', 'end(S)', 'boundary(S)', 'orthToken(S)', 'reading(S)', 'lemma(S)', 'meaning(S)','pos(S)', 'sysCType(S)', 'cForm(S)', 'usage(S)', 'pronToken(S)', 'pronBase(S)',
         'kanaToken(S)', 'kanaBase(S)', 'formToken(S)', 'formBase(S)', 'formOrthBase(S)', 'formOrth(S)', 'orthBase(S)', 'wType(S)', 'charEncloserOpen', 'charEncloserClose',
         'originalText(S)', 'order(S)'
     ]
@@ -488,6 +488,15 @@ def jsonl2comainu(jsonfile: str, bunsetsu: str='bunsetsu1(L)_formOrth_all_period
                 L = token[luw]
                 Lpos = token[luw_pos]
                 pos = token['pos(S)']
+                lemma = row[6]
+                if '-' in lemma:
+                    print(lemma, file=sys.stderr)
+                    tk = lemma.split('-')
+                    lemma = tk[0]
+                    meaning = '-'.join(tk[1:])
+                    row[6] = lemma
+                    row[7] = meaning
+                
                 row.append(token[bunsetsu]) # BOB
 
                 # LUW
