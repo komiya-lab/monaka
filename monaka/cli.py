@@ -1,5 +1,4 @@
 import os
-os.environ["HF_HOME"]="/var/www/html/chamame-monaka/chamamebin/"
 
 import sys
 import urllib.parse
