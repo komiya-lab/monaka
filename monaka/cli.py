@@ -1,5 +1,4 @@
 import os
-os.environ["HF_HOME"]="/var/www/html/chamame-monaka/chamamebin/"
 
 import sys
 import urllib.parse
@@ -46,13 +45,10 @@ UNIDIC_URLS = {
     "10_jodai": UNIDIC_URL + "2203/UniDic-202203_10_jodai.zip",
     "70_waka": UNIDIC_URL + "2308/unidic-waka-v202308.zip",
     "80_kansai_hougen": UNIDIC_URL + "2308/unidic-kansai-v202308.zip"
-<<<<<<< HEAD
-=======
 }
 MODEL_URL = "https://chamame.ninjal.ac.jp/chamame-monaka/"
 MODEL_URLS = {
     "all_in_one": MODEL_URL + "all_in_one.zip"
->>>>>>> origin/main
 }
 
 prv = 0

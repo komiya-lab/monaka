@@ -699,14 +699,14 @@ class LemmaPredictor:
         data = dataset[0]
         #print(data['input_ids'].size())
         inp = self.tokenizer.decode(data['input_ids'])
-        print(inp)
+        #print(inp)
         if '<unk>' in inp:
-            return ''.join([v['lemma'] for v in data['suw']])
+            return ''.join([v['lemma'] for v in data.get('suw', [{'lemma': ''}])])
         outputs = self.model.generate(data['input_ids'].unsqueeze(0).to(self.device), 
                                       attention_mask=data['attention_mask'].to(self.device),
                                       do_sample=False)
         #print(outputs)
-        print(self.tokenizer.decode(outputs[0], skip_special_tokens=False))
+        #print(self.tokenizer.decode(outputs[0], skip_special_tokens=False))
         tokens = self.tokenizer.convert_ids_to_tokens(outputs[0], skip_special_tokens=False)
         output = []
         for t in tokens:
