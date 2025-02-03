@@ -371,6 +371,25 @@ class MeCabEncoder(Encoder):
 
         output += self.format(self.eos_format, kwargs.get('sentence', ''), 0, '', '', '', '', [], len(tokens))
         return output
+    
+
+@Encoder.register("cabocha")
+class CaboChaEncoder(Encoder):
+
+    def encode(self, tokens: List[str], pos: List[str], chunk: List[str],  features: List[List[str]], **kwargs) -> Any:
+        chunk_count = 0
+        outputs = list()
+        for token, c, feat in zip(tokens, chunk, features):
+            if chunk_count < 1:
+                outputs.append("* 0 -1D")
+                chunk_count += 1
+            elif 'B' in c:
+                outputs.append(f"* {chunk_count} -1D")
+                chunk_count += 1
+            outputs.append(f"{token.strip()}\t{','.join(feat)}")
+        outputs.append('EOS')
+        return '\n'.join(outputs)
+    
 
 @Encoder.register("luw-split")
 class LUWSplitter(Encoder):
