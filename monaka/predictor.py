@@ -377,16 +377,65 @@ class MeCabEncoder(Encoder):
 class CaboChaEncoder(Encoder):
 
     def encode(self, tokens: List[str], pos: List[str], chunk: List[str],  features: List[List[str]], **kwargs) -> Any:
+
+        if "luw" in kwargs:
+            lpos = kwargs["luw"]
+        else:
+            lpos = pos
+
         chunk_count = 0
         outputs = list()
-        for token, c, feat in zip(tokens, chunk, features):
+
+        luws = list()
+        luw_read = list()
+        luw = ""
+        luw_r = ""
+        for token, p, feat in zip(tokens, lpos, features):
+            if p == '*':
+                luw += token
+                luw_r += feat[9] if len(feat) > 10 else ''
+            else:
+                if len(luw) > 0:
+                    luws.append(luw)
+                    luw_read.append(luw_r)
+                luw = token
+                luw_r = feat[9] if len(feat) > 10 else ''
+        if len(luw) > 0:
+            luws.append(luw)
+            luw_read.append(luw_r)
+
+        luw_c = 0
+        for token, c, p, feat in zip(tokens, chunk, lpos, features):
             if chunk_count < 1:
                 outputs.append("* 0 -1D")
                 chunk_count += 1
+                c = 'B'
             elif 'B' in c:
                 outputs.append(f"* {chunk_count} -1D")
                 chunk_count += 1
-            outputs.append(f"{token.strip()}\t{','.join(feat)}")
+            pos_tokens = ['*' for _ in range(4)]
+            pos_tokens.extend(['' for _ in range(4)])
+            if p == '*':
+                if c == 'B':
+                    luw = token
+                    for i, f in enumerate(feat[:4]):
+                        pos_tokens[i] = f
+                else:
+                    luw = ""
+                    pos_tokens = pos_tokens[1:]
+            else:
+                luw = luws[luw_c]
+                luw_c += 1
+                for i, t in enumerate(p.split('-')):
+                    pos_tokens[i] = t
+            c = '' if 'I' in c else 'B'
+
+            feat = [f.replace(',', '，') for f in feat]
+            if len(feat) < 29:
+                L = 29 -len(feat)
+                feat.extend(['' for _ in range(L)])
+
+            outputs.append(f"{token.strip()}\t{','.join(feat)}\t{luw}\t{','.join(pos_tokens)}\t{c}")
         outputs.append('EOS')
         return '\n'.join(outputs)
     

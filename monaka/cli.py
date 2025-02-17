@@ -23,14 +23,14 @@ UNIDIC_URL = "https://clrd.ninjal.ac.jp/unidic_archive/"
 UNIDIC_URLS = {
     "gendai": UNIDIC_URL + "2302/unidic-cwj-202302.zip",
     "spoken": UNIDIC_URL + "2302/unidic-csj-202302.zip",
-    "novel": UNIDIC_URL + "2203/UniDic-202203_65_novel.zip",
-    "qkana": UNIDIC_URL + "2203/UniDic-202203_60b_qkana.zip",
-    "kindai": UNIDIC_URL + "2203/UniDic-202203_60a_kindai-bungo.zip",
-    "kinsei": UNIDIC_URL + "2203/UniDic-202203_50c_kinsei-edo.zip",
-    "kyogen": UNIDIC_URL + "2203/UniDic-202203_40_chusei-kougo.zip",
-    "wakan": UNIDIC_URL + "2203/UniDic-202203_30_chusei-bungo.zip",
-    "wabun": UNIDIC_URL + "2203/UniDic-202203_20_chuko.zip",
-    "manyo": UNIDIC_URL + "2203/UniDic-202203_10_jodai.zip",
+    "novel": UNIDIC_URL + "2308/unidic-novel-v202308.zip",
+    "qkana": UNIDIC_URL + "2308/unidic-qkana-v202308.zip",
+    "kindai": UNIDIC_URL + "2308/unidic-kindai-bungo-v202308.zip",
+    "kinsei": UNIDIC_URL + "2308/unidic-kinsei-edo-v202308.zip",
+    "kyogen": UNIDIC_URL + "2308/unidic-chusei-kougo-v202308.zip",
+    "wakan": UNIDIC_URL + "2308/unidic-chusei-bungo-v202308.zip",
+    "wabun": UNIDIC_URL + "2308/unidic-chuko-v202308.zip",
+    "manyo": UNIDIC_URL + "2308/unidic-jodai-v202308.zip",
     "unidic-spoken": UNIDIC_URL + "2302/unidic-csj-202302.zip",
     "65_novel": UNIDIC_URL + "2203/UniDic-202203_65_novel.zip",
     "60b_qkana": UNIDIC_URL + "2203/UniDic-202203_60b_qkana.zip",
@@ -146,7 +146,19 @@ def parse(model_dir: str, inputs: List[str], device: str="cpu", batch: int=8, ou
             inputs_ = [line.strip() for line in f]
     else:
         inputs_ = inputs
-    for r in predictor.predict(inputs_, suw_tokenizer=tokenizer, suw_tokenizer_option={"dic": dic}, device=device, batch_size=batch, encoder_name=output_format, node_format=node_format, unk_format=unk_format, eos_format=eos_format, bos_format=bos_format):
+    meta = list()
+    m = list()
+    inps = list()
+    for inp in inputs_:
+        if inp.startswith('#'):
+            m.append(inp)
+            continue
+        inps.append(inp)
+        meta.append(m)
+        m = list()
+    for m, r in zip(meta, predictor.predict(inps, suw_tokenizer=tokenizer, suw_tokenizer_option={"dic": dic}, device=device, batch_size=batch, encoder_name=output_format, node_format=node_format, unk_format=unk_format, eos_format=eos_format, bos_format=bos_format)):
+        if len(m) > 0:
+            print('\n'.join(m))
         print(r.rstrip())
 
 @app.command()
