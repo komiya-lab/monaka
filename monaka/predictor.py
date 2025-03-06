@@ -371,6 +371,25 @@ class MeCabEncoder(Encoder):
 
         output += self.format(self.eos_format, kwargs.get('sentence', ''), 0, '', '', '', '', [], len(tokens))
         return output
+    
+    
+@Encoder.register("cabocha")
+class CaboChaEncoder(Encoder):
+
+    def encode(self, tokens: List[str], pos: List[str], chunk: List[str],  features: List[List[str]], **kwargs) -> Any:
+        chunk_count = 0
+        outputs = list()
+        for token, c, feat in zip(tokens, chunk, features):
+            if chunk_count < 1:
+                outputs.append("* 0 -1D")
+                chunk_count += 1
+            elif 'B' in c:
+                outputs.append(f"* {chunk_count} -1D")
+                chunk_count += 1
+            outputs.append(f"{token.strip()}\t{','.join(feat)}")
+        outputs.append('EOS')
+        return '\n'.join(outputs)
+    
 
 @Encoder.register("luw-split")
 class LUWSplitter(Encoder):
@@ -686,7 +705,7 @@ class LemmaPredictor:
         self.special_tokens.extend([" ", "▁", "_"])
         self.trainer = Seq2SeqTrainer(self.model, Seq2SeqTrainingArguments(".", per_device_eval_batch_size=8, predict_with_generate=True))
 
-    def predict(self, input: Dict) -> str:
+    def predict(self, input: Dict, use_pos: bool=False) -> str:
         dataset = LemmaJsonDataset(input, **self.config['dataset_options'])
         #print(dataset[0])
         #print(dataset[0]['input_ids'].size())
@@ -702,6 +721,13 @@ class LemmaPredictor:
         #print(inp)
         if '<unk>' in inp:
             return ''.join([v['lemma'] for v in data.get('suw', [{'lemma': ''}])])
+        
+        if use_pos:
+            pos:str = data.get('pos', '')
+            if pos.startswith(('接続詞', '感動詞', '副詞')):
+                # 特定の品詞の場合はSUWを直接使う
+                return ''.join([v['lemma'] for v in data.get('suw', [{'lemma': ''}])])
+            
         outputs = self.model.generate(data['input_ids'].unsqueeze(0).to(self.device), 
                                       attention_mask=data['attention_mask'].to(self.device),
                                       do_sample=False)

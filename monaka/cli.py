@@ -9,7 +9,7 @@ import urllib
 import requests
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 from rich.progress import Progress
 from prettytable import PrettyTable
 from monaka.predictor import Predictor, LemmaPredictor, RESC_DIR, Encoder, Decoder
@@ -199,9 +199,9 @@ def predict_raw(model_dir: Path, input_file: Path, device: str="cpu", batch: int
 
 
 @app.command()
-def predict_lemma(model_dir: Path, input: str, device: str='cpu'):
+def predict_lemma(model_dir: Path, input: str, mode: str='json', suffix:str='', n_tokens: int=2, device: str='cpu'):
     predictor = LemmaPredictor(model_dir=model_dir, device=device)
-    if os.path.exists(input):
+    if os.path.exists(input) and mode != 'jsonl':
         res = dict()
         with open(input) as f:
             js = json.load(f)
@@ -214,6 +214,23 @@ def predict_lemma(model_dir: Path, input: str, device: str='cpu'):
             v['lemma'] = lemma
             res[k] = v
         print(json.dumps(res, indent=True, ensure_ascii=False)) 
+    elif os.path.exists(input) and mode=='jsonl':
+        with open(input) as f:
+            for line in f:
+                js = json.loads(line)
+                lkeys = [k for k in js.keys() if k.startswith('LUW')]
+                for key in lkeys:
+                    luws = js[key]
+                    for luw in luws:
+                        del luw['lemma']
+                        N = len(luw.get('suw', []))
+                        if N < n_tokens:
+                            continue
+                        print(luw, file=sys.stderr)
+                        lemma = predictor.predict([{'a': luw}], use_pos=True)
+                        luw[f'lemma_{suffix}'] = lemma
+                print(json.dumps(js, ensure_ascii=False))
+
     else:
         print(predictor.predict([json.loads(input)]))
 

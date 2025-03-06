@@ -6,7 +6,7 @@ import json
 import enum
 import numpy as np
 
-from typing import List
+from typing import List, Optional
 
 
 app = typer.Typer()
@@ -397,7 +397,7 @@ class SampleStrategy(str, enum.Enum):
     same = 'same'
 
 @app.command()
-def sample(jsonlfile: str, num: int=100, strategy: SampleStrategy=SampleStrategy.random, token_th: int= 5):
+def sample(jsonlfile: str, num: int=100, strategy: SampleStrategy=SampleStrategy.random, token_th: int= 5, similarity: Optional[float]=None):
     res = list()
     with open(jsonlfile) as f:
         for line in f:
@@ -417,11 +417,17 @@ def sample(jsonlfile: str, num: int=100, strategy: SampleStrategy=SampleStrategy
 
     if strategy == SampleStrategy.different:
         res.sort(key=lambda v: v[0])
+        num = min(num, len(res))
+        if similarity is not None:
+            res = [r for r in res if r[0]<=similarity]
         for v, js in res[:num]:
             print(v, file=sys.stderr)
             print(json.dumps(js, ensure_ascii=False))
     elif strategy == SampleStrategy.same:
+        if similarity is not None:
+            res = [r for r in res if r[0]>=similarity]
         res.sort(key=lambda v: v[0], reverse=True)
+        num = min(num, len(res))
         for v, js in res[:num]:
             print(v, file=sys.stderr)
             print(json.dumps(js, ensure_ascii=False))
@@ -542,6 +548,55 @@ def summarize(jsonfiles: List[str]):
                     update(res[k], d)
     recalc(res)
     print(json.dumps(res, indent=True))
+
+
+@app.command()
+def luw4lemma(jsonlfile: str):
+    with open(jsonlfile) as f:
+        for line in f:
+            js = json.loads(line)
+
+            if 'tokens' not in js or len(js['tokens']) ==0:
+                continue
+
+            res = dict()
+            tokens = js['tokens']
+            res['file'] = js['file(S)']
+            res['sentence_original'] = js['sentence']
+            res['sentence_formOrth'] = ''.join([t['formOrth(S)'] for t in tokens])
+            res['suw_tokens'] = [{'surface': t['formOrth(S)'], 'pos': t['pos(S)'], 'lemma': t['lemma(S)']} for t in tokens]
+            ftoken = tokens[0]
+            luw_keys = [k for k in ftoken.keys() if k.startswith('l_pos(L)')]
+            for lkey in luw_keys:
+                ltype = '_'.join(lkey.split('_')[2:])
+                ltype = f'LUW_{ltype}'
+
+                indices = []
+                prv = -1
+                l_pos = []
+                for token in tokens:
+                    luw = token[lkey]
+                    if luw != '*':
+                        prv += 1
+                        l_pos.append(luw)
+                        indices.append(prv)
+                    else:
+                        indices.append(prv)
+                
+                L = max(*indices)+1
+
+
+                res[ltype] = [{
+                    'surface': ''.join([t['formOrth(S)'] for j, t in zip(indices, tokens) if i == j]),
+                    'lemma': '',
+                    'input': '',
+                    'pos': l_pos[i],
+                    'text': res['sentence_formOrth'],
+                    'suw': [t for j, t in zip(indices, res['suw_tokens'] ) if i == j]
+                } for i in range(L)]
+
+            print(json.dumps(res, ensure_ascii=False))
+
 
 if __name__ == "__main__":
     app()
