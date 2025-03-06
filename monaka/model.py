@@ -501,7 +501,6 @@ class ChunkDependencyParserModel(LUWParserModel):
 
         if self.m_pos_emb:
             pos_embs = self.m_pos_emb(pos)
-            print(pos_embs.size())
             pos_embs = self.m_pos_dropout(pos_embs)
             words_emb = torch.cat((words_emb, pos_embs), dim=-1) # batch, words_len, hidden
 

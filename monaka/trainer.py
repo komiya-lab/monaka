@@ -286,11 +286,13 @@ class DependencyTrainer(Trainer):
                 try:
                     dep_correct += ((dep_pred == dep_ids) & dmask).sum().detach().cpu().item()
                     dep_length += (dmask).sum().detach().cpu().item()
-                    rel_correct += ((rel_pred == dep_rel_ids) & rmask).sum().detach().cpu().item()
+                    rel_size = rel_pred.size()
+                    rel_correct += ((rel_pred == dep_rel_ids[:, :rel_size[1], :rel_size[2]]) & rmask[:, :rel_size[1], :rel_size[2]]).sum().detach().cpu().item()
                     rel_length += (rmask).sum().detach().cpu().item()
                     wrd_correct += ((wrd_pred == word_rel_ids) & wmask).sum().detach().cpu().item()
                     wrd_length += (wmask).sum().detach().cpu().item()
-                except:
+                except Exception as e:
+                    raise e
                     logger.info(f"evaluation skipped: {data['text']}")
         logger.info(f"dep accuracy: {dep_correct/dep_length*100}, rel accuracy: {rel_correct/rel_length*100}, word rel accuracy: {wrd_correct/wrd_length*100}, loss: {loss}")
         self.model.train(True)

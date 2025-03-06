@@ -27,13 +27,13 @@ class ChunkDepJsonLDataset(torch.utils.data.Dataset):
     
     """
 
-    def __init__(self, jsonlfiles: Union[str, List[str]], label_file: str, pos_file: str, rel_file: str, lm_tokenizer: str, lm_tokenizer_config: Dict, max_length: int=1024,  chun_max_length: int=128, logger=logger, store_all: bool=False, 
+    def __init__(self, jsonlfiles: Union[str, List[str]], label_file: str, pos_file: str, rel_file: str, lm_tokenizer: str, lm_tokenizer_config: Dict, max_length: int=1024,  chunk_max_length: int=128, logger=logger, store_all: bool=False, 
                  **kwargs):
         self.sentences = list()
         self.tokenizer = Tokenizer.by_name(lm_tokenizer)(**lm_tokenizer_config)
         self.pad_token_id = self.tokenizer.pad_token_id
         self.max_length = max_length
-        self.chun_max_length = chun_max_length
+        self.chunk_max_length = chunk_max_length
         self.jsonlfiles = jsonlfiles
         self.logger = logger
         self.store_all = store_all
@@ -142,9 +142,9 @@ class ChunkDepJsonLDataset(torch.utils.data.Dataset):
 
     def to_rel_ids(self, heads: List[int], rels: List[str]):
         rels_ = [self.rel_dic.get(k, 0) for k in rels]
-        outs = torch.LongTensor([[self.pad_token_id for _ in range(self.chun_max_length)] for _ in range(self.chun_max_length)])
+        outs = torch.LongTensor([[self.pad_token_id for _ in range(self.chunk_max_length)] for _ in range(self.chunk_max_length)])
         for i, (hid, r) in enumerate(zip(heads, rels_)):
-            if i >= self.chun_max_length or hid > self.chun_max_length:
+            if i >= self.chunk_max_length or hid > self.chunk_max_length:
                 continue
             outs[i, hid] = r
         return outs
