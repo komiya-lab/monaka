@@ -288,7 +288,7 @@ class DependencyTrainer(Trainer):
                     dep_length += (dmask).sum().detach().cpu().item()
                     rel_size = rel_pred.size()
                     rel_correct += ((rel_pred == dep_rel_ids[:, :rel_size[1], :rel_size[2]]) & rmask[:, :rel_size[1], :rel_size[2]]).sum().detach().cpu().item()
-                    rel_length += (rmask).sum().detach().cpu().item()
+                    rel_length += (rmask[:, :rel_size[1], :rel_size[2]]).sum().detach().cpu().item()
                     wrd_correct += ((wrd_pred == word_rel_ids) & wmask).sum().detach().cpu().item()
                     wrd_length += (wmask).sum().detach().cpu().item()
                 except Exception as e:
