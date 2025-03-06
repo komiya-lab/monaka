@@ -1,0 +1,43 @@
+{
+    "train_files": [""],
+    "dev_files": [""],
+    "test_files": null,
+    "dataeset_options" :{
+        "label_file": "vocab/labels.json",
+        "pos_file": "vocab/pos.json",
+        "rel_file": "vocab/rels.json",
+        "lm_tokenizer": "bert-tohoku-ja",
+        "lm_tokenizer_config": {},
+        "pos_as_tokens": false,
+        "label_for_all_subwords": false,
+        "max_length": 512,
+        "chun_max_length": 128
+    },
+    "model_name": "ChunkDep",
+    "model_config": {
+        "n_pos_emb": 256,
+        "lstm_layers": 2,
+        "word_pooling": "mean",
+        "chunk_pooling": "mean",
+        "pos_dropout": 0.5,
+        "lstm_dropout": 0.5,
+        "mlp_dropout": 0.5,
+        "eps0": 0.01,
+        "eps1": 0.001,
+        "lm_class_name": "AutoLM",
+        "lm_class_config": {
+            "model": "cl-tohoku/bert-base-japanese-whole-word-masking",
+            "requires_grad": true,
+            "use_scalar_mix": false,
+            "sclar_mix_dropout": 0.5,
+            "use_attentions": false
+        },
+        "pos_padding_idx": 1
+    },
+    "batch_size": 32,
+    "epochs": 10,
+    "lr": 2e-5,
+    "decay": 0.75,
+    "decay_steps": 5000,
+    "evaluate_step": 10
+}

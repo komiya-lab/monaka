@@ -11,7 +11,195 @@ from monaka.tokenizer import Tokenizer
 from monaka.mylogging import logger
 from transformers import  AutoTokenizer
 
+class ChunkDepJsonLDataset(torch.utils.data.Dataset):
+    r"""
+    JsonL形式のデータセット 各行は以下。
+    {
+        "sent_id": str      # 文ID
+        "text": str,        # 文そのもの
+        "bunsetsu": [str, ] # 文節区切りのテキスト
+        "bid": [int, ]      # 短単位語の文節ID
+        "pos": [str ]       # 形態論情報(短単位)
+        "tokens": [str, ]   # 短単位のリスト
+        "rel": [str, ]      # 単語単位の係り受けラベル
+        "dependency": [{id, head, rel}] # 文節係り受け情報
+    }
+    
+    """
 
+    def __init__(self, jsonlfiles: Union[str, List[str]], label_file: str, pos_file: str, rel_file: str, lm_tokenizer: str, lm_tokenizer_config: Dict, max_length: int=1024,  chun_max_length: int=128, logger=logger, store_all: bool=False, 
+                 **kwargs):
+        self.sentences = list()
+        self.tokenizer = Tokenizer.by_name(lm_tokenizer)(**lm_tokenizer_config)
+        self.pad_token_id = self.tokenizer.pad_token_id
+        self.max_length = max_length
+        self.chun_max_length = chun_max_length
+        self.jsonlfiles = jsonlfiles
+        self.logger = logger
+        self.store_all = store_all
+
+        with open(label_file) as f:
+            self.label_dic = json.load(f)
+
+        with open(rel_file) as f:
+            self.rel_dic = json.load(f)
+
+        if pos_file is not None :
+            with open(pos_file) as f:
+                self.pos_dic = json.load(f)
+        else:
+            self.pos_dic = None
+        
+        if isinstance(jsonlfiles, str):
+            self.logger.info(f"loading {jsonlfiles}")
+            self.load(jsonlfiles)
+        elif isinstance(jsonlfiles, list):
+            for fname in jsonlfiles:
+                if isinstance(fname, str):
+                    self.logger.info(f"loading {fname}")
+                    self.load(fname)
+                elif isinstance(fname, dict):
+                    self.load_dict(fname)
+        
+        self.logger.info(f"total {len(self.sentences)} sentences loaded.")
+        super().__init__()
+
+    @staticmethod
+    def collate_function(data: List[Dict]):
+        #targets = ["input_ids", "label_ids", "pos_ids"]
+        res = dict()
+        #for target in targets:
+        #    if target not in data[0]:
+        #        continue
+        #    res[target] = [d[target] for d in data]
+        for k in data[0].keys():
+            res[k] = [d[k] for d in data]
+        return res
+
+    def load(self, jsonlfile: str):
+        with open(jsonlfile) as f:
+            for line in f:
+                js = json.loads(line)
+                self.load_dict(js)
+
+    def load_dict(self, js: dict):
+        js['skip'] = False
+
+        if len(js["rel"]) != len(js["tokens"]):
+            self.logger.warning(f'skip loading {js["sentence"]} because of pos {len(js["pos"])} and token {len(js["tokens"])} length unmatch')
+            if self.store_all:
+                js['skip'] = True
+                self.sentences.append(js)
+            return
+        
+        if len(js["tokens"]) == 0:
+            self.logger.warning(f'skip loading {js["sentence"]} because there is no token.')
+            if self.store_all:
+                js['skip'] = True
+                self.sentences.append(js)
+            return
+
+        js["subwords"] = self.to_token_ids(js["tokens"])
+        js["input_ids"] = torch.LongTensor(js["subwords"]["input_ids"])
+        js["word_rel_ids"] = self.to_label_ids(js["rel"]) if "rel" in js else None
+
+        js['chunk_ids'] = torch.LongTensor(js['bid'])
+        js["dep_ids"] = torch.LongTensor([d['head'] for d in js['dependency']]) if "dependency" in js else None
+        js["dep_rel_ids"] = self.to_rel_ids([d['head'] for d in js['dependency']], [d['rel'] for d in js['dependency']]) if "dependency" in js else None
+
+        if self.pos_dic:
+            js["pos_ids"] = self.to_pos_ids(js["pos"]) 
+
+        if len(js["subwords"].word_ids()) == 0:
+            self.logger.warning(f"no words: {js['tokens']}")
+            if self.store_all:
+                js['skip'] = True
+                self.sentences.append(js)
+            return
+
+        if len(js["pos"]) != np.max(js["subwords"].word_ids()) + 1:
+            self.logger.warning(f'unmatch length {len(js["pos"])} {np.max(js["subwords"].word_ids()) + 1}, {js["tokens"]} {js["subwords"]} {js["subwords"].word_ids()}')
+        self.sentences.append(js)
+
+
+    def to_label_ids(self, labels: List[str], word_ids: Optional[List[int]]=None):
+        labels_ = [self.label_dic.get(k, 0) for k in labels]
+        if word_ids is not None:
+            prv = -1
+            labels = list()
+            for idx in word_ids:
+                if idx != prv:
+                    labels.append(labels_[idx])
+                    prv = idx
+                else:
+                    labels.append(1)
+        else:
+            labels = labels_
+        if len(labels) > self.max_length:
+            labels = labels[:self.max_length]
+        return torch.LongTensor(labels)
+    
+
+    def to_rel_ids(self, heads: List[int], rels: List[str]):
+        rels_ = [self.rel_dic.get(k, 0) for k in rels]
+        outs = torch.LongTensor([[self.pad_token_id for _ in range(self.chun_max_length)] for _ in range(self.chun_max_length)])
+        for i, (hid, r) in enumerate(zip(heads, rels_)):
+            if i >= self.chun_max_length or hid > self.chun_max_length:
+                continue
+            outs[i, hid] = r
+        return outs
+    
+
+    def to_pos_ids(self, labels: List[str], word_ids: Optional[List[int]]=None):
+        labels_ = [self.pos_dic.get(k, 0) for k in labels]
+        if word_ids is not None:
+            prv = -1
+            labels = list()
+            for idx in word_ids:
+                if idx != prv:
+                    labels.append(labels_[idx])
+                    prv = idx
+                else:
+                    labels.append(1) # padding index = 1
+        else:
+            labels = labels_
+        if len(labels) > self.max_length:
+            labels = labels[:self.max_length]
+        return torch.LongTensor(labels)
+    
+    def to_token_ids(self, tokens: List[str]):
+        targets = [self.replace_token(t) for t in tokens]
+
+        return self.tokenizer.tokenize(targets, max_length=self.max_length)
+
+    @staticmethod
+    def replace_token(token: str) -> str:
+        """うまくtokenizeできない句点記号を置換する"""
+        if token in ["．", "："]:
+            return "。"
+        if token in ["，", "；"]:
+            return "、"
+        if token in ["？"]:
+            return "?"
+        if token in ["！"]:
+            return "!"
+        if token in ["（"]:
+            return "("
+        if token in ["）"]:
+            return ")"
+        return token
+
+    def __repr__(self):
+        s = f"{self.__class__.__name__}("
+        s += f"n_sentences={len(self.sentences)}"
+
+        return s
+
+    def __len__(self):
+        return len(self.sentences)
+
+    def __getitem__(self, index):
+        return self.sentences[index]
 
 class LUWJsonLDataset(torch.utils.data.Dataset):
     r"""

@@ -16,6 +16,7 @@ def create_vocab(output_dir: Path, jsonl_files: List[Path]):
     os.makedirs(output_dir, exist_ok=True)
     pos = {"unk": 0, "pad": 1}
     labels = {"unk": 0, "pad": 1}
+    rels = {"unk": 0, "pad": 1}
     for jsonl_file in jsonl_files:
         with open(jsonl_file) as f:
             for line in f:
@@ -23,15 +24,28 @@ def create_vocab(output_dir: Path, jsonl_files: List[Path]):
                 for p in js["pos"]:
                     if p not in pos:
                         pos[p] = len(pos)
-                for l in js["labels"]:
+                if "labels" in js:
+                    lab = "labels"
+                else:
+                    lab = "rel"
+                for l in js[lab]:
                     if l not in labels:
                         labels[l] = len(labels)
+                
+                if "dependency" in js:
+                    for dep in js['dependency']:
+                        r = dep["rel"]
+                        if r not in rels:
+                            rels[r] = len(rels)
     
     with open(os.path.join(output_dir, "pos.json"), "w") as f:
         json.dump(pos, f, indent=True, ensure_ascii=False)
 
     with open(os.path.join(output_dir, "labels.json"), "w") as f:
         json.dump(labels, f, indent=True, ensure_ascii=False)
+
+    with open(os.path.join(output_dir, "rels.json"), "w") as f:
+        json.dump(rels, f, indent=True, ensure_ascii=False)
 
 
 @app.command()
