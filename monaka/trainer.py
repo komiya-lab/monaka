@@ -291,7 +291,7 @@ class DependencyTrainer(Trainer):
                     wrd_correct += ((wrd_pred == word_rel_ids) & wmask).sum().detach().cpu().item()
                     wrd_length += (wmask).sum().detach().cpu().item()
                 except:
-                    logger.info(f"evaluation skipped: {data['sentence']}")
+                    logger.info(f"evaluation skipped: {data['text']}")
         logger.info(f"dep accuracy: {dep_correct/dep_length*100}, rel accuracy: {rel_correct/rel_length*100}, word rel accuracy: {wrd_correct/wrd_length*100}, loss: {loss}")
         self.model.train(True)
         return loss, dep_loss, rel_loss, wrd_loss, dep_correct/dep_length, rel_correct/rel_length, wrd_correct/wrd_length
