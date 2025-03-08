@@ -73,7 +73,7 @@ class ChunkDepJsonLDataset(torch.utils.data.Dataset):
         #        continue
         #    res[target] = [d[target] for d in data]
         for k in data[0].keys():
-            res[k] = [d[k] for d in data]
+            res[k] = [d.get(k) for d in data]
         return res
 
     def load(self, jsonlfile: str):
