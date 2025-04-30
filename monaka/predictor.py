@@ -19,7 +19,7 @@ from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
 
 from monaka.model import LUWParserModel, init_device, is_master
-from monaka.dataset import LUWJsonLDataset, LemmaJsonDataset
+from monaka.dataset import LUWJsonLDataset, LemmaJsonDataset, ChunkDepJsonLDataset
 from monaka.metric import MetricReporter, SpanBasedMetricReporter
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__)) # monaka dir
@@ -53,6 +53,36 @@ class Decoder(Registrable):
         }
         """
         raise NotImplementedError
+
+
+class DepDecoder(Registrable):
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+    def __call__(self, *args: Any, **kwds: Any) -> Any:
+        return self.decode(*args, **kwds)
+
+    
+    def decode(self, sent: List[str], **kwargs) -> Dict:
+        """
+        出力は辞書形式 LUWは開始位置の場合はPOS-tag名、そうでない場合は"*"。文節は開始位置は"B"そうでなければ"I"。
+        解析対象のfieldを含んでいれば良い。
+        kwargsにメタ情報を追記でき、それらを辞書に加えることを想定している
+        {
+            "luw": ["POS-tag or *"]
+            "chunk": ["B", "I"]
+        }
+        """
+        raise NotImplementedError
+
+
+@DepDecoder.register("jsonl")
+class DepJsonL(DepDecoder):
+
+    def decode(self, sent, **kwargs):
+        return [json.loads(s) for s in sent]
 
 
 @Decoder.register("LUW-Bunsetsu")
@@ -138,6 +168,28 @@ class Encoder(Registrable):
         raise NotImplementedError
     
 
+class DepEncoder(Registrable):
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__()
+
+    def __call__(self, *args: Any, **kwds: Any) -> Any:
+        return self.encode(*args, **kwds)
+
+    def encode(self, original: List[Dict], **kwargs) -> Any:
+        """
+        Decoderが出力する形式を受け取って、所望の出力形式に変換する
+        """
+        raise NotImplementedError
+
+
+@DepEncoder.register("jsonl")
+class DepPathThrough(DepEncoder):
+
+    def encode(self, original, **kwargs):
+        return original
+
+
 def append_spans(data):
     start = 0
     data["suw_span"] = []
@@ -183,7 +235,8 @@ def append_spans(data):
     data["luw_triples"].append((luw_start, luw_end, luw_type))
 
     return data
-    
+
+
 @Encoder.register("jsonl")
 class PassThrough(Encoder):
 
@@ -703,6 +756,7 @@ class Predictor:
         if outputfile is not None:
             output.close()
 
+
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, AutoConfig
 from torch.utils.data import DataLoader
 class LemmaPredictor:
@@ -750,3 +804,102 @@ class LemmaPredictor:
             "diff": diff
         }
 
+
+class DepPredictor:
+
+    def __init__(self, model_dir: str) -> None:
+        self.model_dir = model_dir
+        
+        with open(os.path.join(model_dir, "config.json")) as f:
+            self.config = json.load(f)
+
+        self.config["dataeset_options"]["label_file"] = os.path.join(model_dir, "labels.json")
+        self.config["dataeset_options"]["rel_file"] = os.path.join(model_dir, "rels.json")
+
+        posfile = os.path.join(model_dir, "pos.json")
+        if os.path.exists(posfile):
+            self.config["dataeset_options"]["pos_file"] = posfile
+
+        self.model = LUWParserModel.by_name(self.config["model_name"]).from_config(self.config["model_config"], **self.config["dataeset_options"])
+        self.model.load_state_dict(torch.load(os.path.join(model_dir, "best.pt")), strict=False)
+        self.model.eval()
+
+        self.decoder = Decoder.by_name(self.config["model_config"]["decoder"])()
+
+        self.dataeset_options = self.config['dataeset_options']
+
+        with open(self.dataeset_options["label_file"]) as f:
+            self.label_dic = json.load(f)
+
+        self.inv_label_dic = {v:k for k, v in self.label_dic.items()}
+
+        with open(self.dataeset_options["rel_file"]) as f:
+            self.rel_dic = json.load(f)
+    
+        self.inv_rel_dic = {v:k for k, v in self.rel_dic.items()}
+
+    def extract_labels(self, word_ids, labels):
+        res = list()
+        if word_ids is None:
+            return [self.inv_label_dic.get(l, "unk") for l in labels]
+        prv = -1
+        for wid, l in zip(word_ids, labels):
+            if wid is not None and wid >= 0:
+                if wid == prv:
+                    continue
+                res.append(self.inv_label_dic.get(l, "unk"))
+                prv = wid
+        return res
+
+    def predict(self, input: List[str], dep_decoder_name: str, encoder_name: str, batch_size: int = 8, device: str="cpu", **kwargs):
+        encoder = DepEncoder.by_name(encoder_name)(**kwargs)
+        decoder = DepDecoder.by_name(dep_decoder_name)(**kwargs)
+
+        data = [decoder(sent) for sent in input]
+
+        self.dataeset_options['store_all'] = True
+        dataset = ChunkDepJsonLDataset(data, **self.dataeset_options)
+        dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=ChunkDepJsonLDataset.collate_function)
+
+
+        init_device(device)
+        try:
+            device = int(device)
+        except:
+            pass
+        self.model.to(device)
+
+        self.model.eval()
+        for data in dataloader:
+                subwords = pad_sequence(data["input_ids"], batch_first=True, padding_value=self.train_data.pad_token_id).to(device)
+                word_ids = pad_sequence([torch.LongTensor(js.word_ids()) for js in data["subwords"]], batch_first=True, padding_value=-1).to(device)
+                chunk_ids = pad_sequence(data["chunk_ids"], batch_first=True, padding_value=-1).to(device)
+                #dep_ids = pad_sequence(data["dep_ids"], batch_first=True, padding_value=-1).to(device)
+                #word_rel_ids = pad_sequence(data["word_rel_ids"], batch_first=True, padding_value=1).to(device)
+                #dep_rel_ids = pad_sequence(data["dep_rel_ids"], batch_first=True, padding_value=1).to(device)
+                pos_ids = pad_sequence(data["pos_ids"], batch_first=True, padding_value=1).to(device) if "pos_ids" in data else None
+                #wmask = word_rel_ids.ne(1)
+                #dmask = dep_ids.ne(-1)
+                #rmask = dep_rel_ids.ne(1)
+
+                dep_out, deprel_out, word_out  = self.model(subwords, word_ids, chunk_ids, pos_ids)
+                dep_pred = torch.argmax(dep_out, dim=-1)
+                rel_pred = torch.argmax(deprel_out, dim=1)
+                wrd_pred = torch.argmax(word_out, dim=-1)
+
+                dep_pred_np = dep_pred.detach().cpu().numpy()
+                rel_pred_np = rel_pred.detach().cpu().numpy()
+                wrd_pred_np = wrd_pred.detach().cpu().numpy()
+
+                for depp, relp, wrdp, bnst, pos, tokens, bid, sentid, text in zip(dep_pred_np, rel_pred_np, wrd_pred_np, data['bunsetsu'], data['pos'], data['tokens'], data['bid'], data['sent_id'], data['text']):
+                    res = {
+                        "sent_id": sentid,
+                        "text": text,
+                        "tokens": tokens,
+                        "bid": bid,
+                        "bunsetsu": bnst,
+                        "pos": pos,
+                    }
+                    res['rel'] = [self.inv_label_dic.get(v, 'unk') for v in wrdp]
+                    res['dependency'] = [{"id": i, "head": u, "rel": self.inv_rel_dic.get(v, 'unk')} for i, (u,v) in enumerate(zip(depp, relp))]
+                    yield encoder(res)
