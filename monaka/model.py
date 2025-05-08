@@ -293,6 +293,8 @@ class WordTaggingParserModel(LUWParserModel):
             self.pooling = self.max
         elif "sum" in pooling:
             self.pooling = torch.sum
+        elif "attention":
+            self.pooling = SelfAttentionPooling(self.m_lm.n_out)
         else:
             self.pooling = None
 
