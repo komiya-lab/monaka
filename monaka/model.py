@@ -12,7 +12,7 @@ from torch.nn.utils.rnn import pad_sequence
 
 from registrable import Registrable
 from typing import Dict
-from monaka.module import MLP, LMEmbedding, Biaffine
+from monaka.module import MLP, LMEmbedding, Biaffine, SelfAttentionPooling
 from monaka.mylogging import logger
 
 
@@ -432,6 +432,7 @@ class ChunkDependencyParserModel(LUWParserModel):
         self.m_pos_emb = nn.Embedding(n_pos, n_pos_emb, pos_padding_idx) if n_pos > 0 and n_pos_emb > 0 else None
         self.m_pos_dropout = nn.Dropout(pos_dropout) if self.m_pos_emb else None
 
+        self.n_in = self.m_lm.n_out if self.m_pos_emb is None else self.m_lm.n_out + n_pos_emb
 
         if "max" in word_pooling:
             self.word_pooling = self.max
@@ -439,6 +440,8 @@ class ChunkDependencyParserModel(LUWParserModel):
             self.word_pooling = torch.sum
         elif "mean" in word_pooling:
             self.word_pooling = torch.mean
+        elif "attention":
+            self.word_pooling = SelfAttentionPooling(self.m_lm.n_out)
         else:
             self.word_pooling = None
 
@@ -448,10 +451,11 @@ class ChunkDependencyParserModel(LUWParserModel):
             self.chunk_pooling = torch.sum
         elif "mean" in chunk_pooling:
             self.chunk_pooling = torch.mean
+        elif "attention":
+            self.chunk_pooling = SelfAttentionPooling(self.n_in)
         else:
             self.chunk_pooling = None
 
-        self.n_in = self.m_lm.n_out if self.m_pos_emb is None else self.m_lm.n_out + n_pos_emb
         self.m_word = MLP(self.n_in, n_class, mlp_dropout)
 
         if lstm_layers > 0:

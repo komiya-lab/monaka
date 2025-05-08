@@ -11,4 +11,5 @@ tensorboard
 setencepiece
 accelerate
 rich
+ufal.chu_liu_edmonds
 numpy<2.0.0

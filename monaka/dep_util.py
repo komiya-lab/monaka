@@ -83,6 +83,9 @@ def conllu2dep(fname: str):
             res['tokens'] = tokens
             res['bid'] = bids
             res['dependency'] = list()
+            res['lemma'] = [token['lemma'] for token in sent]
+            res['misc'] = [token['misc'] for token in sent]
+            res['upos'] = [token['upos'] for token in sent]
 
             for i, (head, rel) in enumerate(zip(bunsetsu_deps, bunsetsu_deprel)):
                  if head == 0:

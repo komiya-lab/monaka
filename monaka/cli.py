@@ -11,7 +11,7 @@ import requests
 from pathlib import Path
 from typing import List, Optional
 from rich.progress import Progress
-from monaka.predictor import Predictor, LemmaPredictor, RESC_DIR, Encoder, Decoder
+from monaka.predictor import Predictor, LemmaPredictor, DepPredictor, RESC_DIR, Encoder, Decoder
 from monaka.metric import SpanBasedMetricReporter
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
@@ -211,9 +211,19 @@ def evaluate_lemma(model_dir, inputfile: str):
 
 
 @app.command()
+def predict_dep(model_dir: Path, input: Path, decoder_name:str='jsonl', encoder_name:str='jsonl', batch_size:int=8, device:str='cpu'):
+    predictor = DepPredictor(model_dir=model_dir)
+    with open(input) as f:
+        input_ = [line for line in f]
+    for res in predictor.predict(input_, decoder_name, encoder_name, batch_size, device):
+        print(res)
+
+
+@app.command()
 def evaluate(model_dir, inputfile: str, device: str="cpu", batch: int=8, targets: List[str]=("luw", "chunk"), pos_level:int = -1, format: str="pretty", outputfile: str=None):
     predictor = Predictor(model_dir=model_dir)
-    predictor.evaluate(inputfile, batch_size=batch, device=device, targets=targets, pos_level=pos_level, format_=format, outputfile=outputfile)
+    res = predictor.evaluate(inputfile, batch_size=batch, device=device, targets=targets, pos_level=pos_level, format_=format, outputfile=outputfile)
+    print(res)
 
 
 @app.command()

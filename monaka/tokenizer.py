@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import torch
+import json
 import torch.nn as nn
 from typing import Dict
 from registrable import Registrable
@@ -70,3 +71,39 @@ try:
 
 except:
     pass
+
+
+class wdict(dict):
+
+    def __init__(self, word_id_key:str, *args):
+        super().__init__(*args)
+        self.word_id_key = word_id_key
+
+    def word_ids(self):
+        return self.get(self.word_id_key)
+
+    
+
+@Tokenizer.register("word")
+class WordTokenizer(Tokenizer):
+
+    def __init__(self, pad_token, unk_token, token_dict, add_special_tokens=False):
+        with open(token_dict) as f:
+            self.token_dict = json.load(f)
+
+        self.unk_token = unk_token
+
+        class PsuedoTokenizer:
+
+            def __init__(self, pad_token_id):
+                self.pad_token_id = pad_token_id
+
+        super().__init__(PsuedoTokenizer(pad_token), add_special_tokens)
+
+    def tokenize(self, words, max_length=None):
+        unk = self.token_dict[self.unk_token]
+        r = {
+            "input_ids": [self.token_dict.get(w, unk) for w in words],
+            "wids": [i for i in range(len(words))]
+        }
+        return wdict("wids", r)

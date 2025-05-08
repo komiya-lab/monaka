@@ -22,6 +22,17 @@ class LMEmbedding(nn.Module, Registrable):
         return cls(**config)
    
 
+@LMEmbedding.register("FixedEmb")
+class FixedEmbedding(LMEmbedding):
+
+    def __init__(self, n_out, n_vocab, padding_index, *args, **kwargs):
+        super().__init__(n_out, n_vocab, padding_index, *args, **kwargs)
+        self.emb = nn.Embedding(n_vocab, n_out, padding_index)
+
+    def forward(self, subwords):
+        return self.emb(subwords)
+
+
 @LMEmbedding.register("AutoLM")
 class AutoLMEmebedding(LMEmbedding):
     """
@@ -285,3 +296,36 @@ class ScalarMix(nn.Module):
         weighted_sum = sum(w * h for w, h in zip(normed_weights, tensors))
 
         return self.gamma * weighted_sum
+
+
+class SelfAttentionPooling(nn.Module):
+    """
+    Implementation of SelfAttentionPooling 
+    Original Paper: Self-Attention Encoding and Pooling for Speaker Recognition
+    https://arxiv.org/pdf/2008.01077v1.pdf
+    """
+    def __init__(self, input_dim):
+        super(SelfAttentionPooling, self).__init__()
+        self.W = nn.Linear(input_dim, 1)
+        self.input_dim = input_dim
+        
+    def forward(self, batch_rep, dim=1, keepdim=True):
+        """
+        input:
+            batch_rep : size (N, T, H), N: batch size, T: sequence length, H: Hidden dimension
+        
+        attention_weight:
+            att_w : size (N, T, 1)
+        
+        return:
+            utter_rep: size (N, H)
+        """
+        softmax = nn.functional.softmax
+        att_w = softmax(self.W(batch_rep).squeeze(-1), dim=dim).unsqueeze(-1)
+        utter_rep = torch.sum(batch_rep * att_w, dim=1)
+
+
+        if keepdim:
+            utter_rep = utter_rep.unsqueeze(dim)
+
+        return utter_rep

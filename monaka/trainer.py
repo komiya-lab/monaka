@@ -82,7 +82,7 @@ class DependencyTrainer(Trainer):
         os.makedirs(output_dir, exist_ok=True)
 
         logger = get_logger(f"monaka.trainer.{output_dir.replace('/', '.')}")
-        init_logger(logger, handlers=[logging.StreamHandler(), logging.FileHandler(f"{output_dir}/train.log", 'w')], verbose=verbose)
+        init_logger(logger, handlers=[logging.StreamHandler(), logging.FileHandler(f"{output_dir}/train.{datetime.datetime.now().timestamp()}.log", 'w')], verbose=verbose)
         self.output_dir = output_dir
 
         logger.info("dataset options:")

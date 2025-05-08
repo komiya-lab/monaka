@@ -46,6 +46,7 @@ setuptools.setup(
         "torch",
         "prettytable",
         "Flask",
+        "ufal.chu_liu_edmonds"
         "requests"
     ],
     extras_require={
