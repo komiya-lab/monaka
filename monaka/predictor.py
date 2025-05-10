@@ -244,14 +244,20 @@ class UDDepEncoder(DepEncoder):
                 #print(i, h)
                 #print(len(token_list), len(hids))
                 token_list[i]['head'] = hids[h] + 1
-                token_list[i]['deprel'] = dep['rel']
+                token_list[i]['deprel'] = dep['rel'] if dep['rel'] != 'unk' else 'nmod'
             else:
                 token_list[i]['head'] = hids[-1] + 1
-                token_list[i]['deprel'] = dep['rel']
+                token_list[i]['deprel'] = dep['rel']if dep['rel'] != 'unk' else 'nmod'
     
+        for t in token_list[1:]:
+            if t['deprel'] == 'fixed':
+                t['head'] = t['id'] -1
+            if t['deprel'] == 'unk':
+                t['deprel'] = 'nmod'
+
         tlist = TokenList([Token(**t) for t in token_list])
-        tlist.metadata['text'] = original['text']
         tlist.metadata['sent_id'] = original['sent_id']
+        tlist.metadata['text'] = original['text']
 
         return tlist.serialize()[:-1]
 
@@ -911,20 +917,7 @@ class DepPredictor:
     
         self.inv_rel_dic = {v:k for k, v in self.rel_dic.items()}
 
-    def extract_labels(self, word_ids, labels):
-        res = list()
-        if word_ids is None:
-            return [self.inv_label_dic.get(l, "unk") for l in labels]
-        prv = -1
-        for wid, l in zip(word_ids, labels):
-            if wid is not None and wid >= 0:
-                if wid == prv:
-                    continue
-                res.append(self.inv_label_dic.get(l, "unk"))
-                prv = wid
-        return res
-
-    def predict(self, input: List[str], dep_decoder_name: str, encoder_name: str, batch_size: int = 8, device: str="cpu", **kwargs):
+    def predict(self, input: List[str], dep_decoder_name: str, encoder_name: str, batch_size: int = 8, device: str="cpu", left2right: bool=False, **kwargs):
         encoder = DepEncoder.by_name(encoder_name)(**kwargs)
         decoder = DepDecoder.by_name(dep_decoder_name)(**kwargs)
 
@@ -960,16 +953,17 @@ class DepPredictor:
                 dep_out, deprel_out, word_out  = self.model(subwords, word_ids, chunk_ids, pos_ids)
                 #deprel_out = deprel_out.permute((0,2,3,1)) # [batch, chunk_class, chunk_len, chunk_len] -> [batch, chunk_len, chunk_len, chunk_class]
                 #dep_pred = torch.argmax(dep_out, dim=-1)
+                softmax = torch.nn.functional.softmax
                 deprel_out[:, self.rel_dic['root'], :, :] = -1000.
                 rel_pred = torch.argmax(deprel_out, dim=1) #[batch, chunk_len, chunk_len]
+                wrd_shead_np = softmax(word_out[:, :, self.label_dic['shead']], dim=-1).detach().cpu().numpy()
                 word_out2 = word_out.detach()
                 word_out2[:, :, self.label_dic['shead']] = -1000.
                 wrd_pred = torch.argmax(word_out2, dim=-1)
 
-                dep_pred_np = dep_out.detach().cpu().numpy()
+                dep_pred_np = softmax(dep_out, dim=-1).detach().cpu().numpy()
                 rel_pred_np = rel_pred.detach().cpu().numpy()
                 wrd_pred_np = wrd_pred.detach().cpu().numpy()
-                wrd_shead_np = word_out2[:, :, self.label_dic['shead']].detach().cpu().numpy()
                 nulls = ['_' for _ in data['tokens']]
 
                 for depp, relp, wrdp, shp, bnst, pos, tokens, bid, sentid, text, upos, misc, lemma in zip(dep_pred_np, rel_pred_np, wrd_pred_np, wrd_shead_np, 
@@ -995,13 +989,25 @@ class DepPredictor:
                     #print(heads, len(heads), len(bnst))
                     #print(heads.index(0))
                     root = heads.index(0) -1
+                    if left2right:
+                        x = list()
+                        y = list()
+                        for i in range(len(bnst)):
+                            for j in range(0, root):
+                                x.append(j)
+                                y.append(i)
+                            for j in range(root+1, len(bnst)):
+                                x.append(i)
+                                y.append(j)
+                        ndepp[(x, y)] = -1000.
+                        heads, _ = chu_liu_edmonds(ndepp)
                     #roots = np.array([depp[i,i] if np.argmax(depp[i, :len(bnst)]) == i else -1000. for i in range(len(bnst))])
                     #root = np.argmax(roots)
                     #for i in range(depp.shape[0]):
                     #    depp[i, i] = -1000.
                     #dep = np.argmax(depp, axis=-1)
-                    res['rel'] = [self.inv_label_dic.get(v, 'unk') for v,_ in zip(wrdp, tokens)]
-                    res['dependency'] = [{"id": i, "head": int(u) -1 if u > 0 else root, "rel": self.inv_rel_dic.get(v[u-1], 'unk')} for i, (u,v,_) in enumerate(zip(heads[1:], relp, bnst))]
+                    res['rel'] = [self.inv_label_dic.get(v, 'nmod') for v,_ in zip(wrdp, tokens)]
+                    res['dependency'] = [{"id": i, "head": int(u) -1 if u > 0 else root, "rel": self.inv_rel_dic.get(v[u-1], 'nmod')} for i, (u,v,_) in enumerate(zip(heads[1:], relp, bnst))]
                     for d in res['dependency']:
                         if d['id'] == d['head']:
                             d['head'] = root
