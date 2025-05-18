@@ -266,7 +266,23 @@ class UDDepEncoder(DepEncoder):
 class CabochaDepEncoder(DepEncoder):
 
     def encode(self, original, **kwargs):
-        return super().encode(original, **kwargs)
+        
+        pbid = -1
+        out = list()
+        out.append(f'#! DOCATTR	<sent_id># sent_id = {original["sent_id"]}</sent_id>')
+        deps = original['dependency']
+        for bid, token, feat in zip(original['bid'], original['tokens'], original['unidic']):
+            if bid != pbid:
+                pbid = bid
+                head = deps[bid]['head']
+                if head == bid:
+                    head = -1
+                out.append(f'* {bid} {head}D')
+            feat = [f.replace(',', '，') for f in feat]
+            out.append(f"{token.strip()}\t{','.join(feat)}")
+        out.append('EOS')
+        return '\n'.join(out)
+            
 
 def append_spans(data):
     start = 0
