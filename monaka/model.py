@@ -12,7 +12,7 @@ from torch.nn.utils.rnn import pad_sequence
 
 from registrable import Registrable
 from typing import Dict
-from monaka.module import MLP, LMEmbedding, Biaffine, SelfAttentionPooling
+from monaka.module import MLP, LMEmbedding, Biaffine, SelfAttentionPooling, PositionalEncoding
 from monaka.mylogging import logger
 
 
@@ -468,6 +468,7 @@ class ChunkDependencyParserModel(LUWParserModel):
         if lstm_layers > 0:
             if encoder_type == 'transformer':
                 self.m_encoder = nn.TransformerEncoder(nn.TransformerEncoderLayer(self.n_in, nhead=8, dropout=lstm_dropout, batch_first=True), lstm_layers)
+                self.m_position_enc = PositionalEncoding(self.n_in, lstm_dropout)
             else:
                 self.m_encoder = nn.LSTM(self.n_in, self.n_in, num_layers=lstm_layers, batch_first=True, dropout=lstm_dropout, bidirectional=True)
                 self.n_in = self.n_in * 2
@@ -561,6 +562,7 @@ class ChunkDependencyParserModel(LUWParserModel):
             
             if self.m_encoder:
                 if self.encoder_type == 'transformer':
+                    words_emb = self.m_position_enc(words_emb)
                     words_emb = self.m_encoder(words_emb)  # batch, words_len, hidden 
                 else:
                     words_emb, _ = self.m_encoder(words_emb)  # batch, words_len, hidden *2
