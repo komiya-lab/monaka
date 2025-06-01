@@ -27,16 +27,22 @@ class ChunkDepJsonLDataset(torch.utils.data.Dataset):
     
     """
 
-    def __init__(self, jsonlfiles: Union[str, List[str]], label_file: str, pos_file: str, rel_file: str, lm_tokenizer: str, lm_tokenizer_config: Dict, max_length: int=1024,  chunk_max_length: int=128, logger=logger, store_all: bool=False, 
+    def __init__(self, jsonlfiles: Union[str, List[str]], label_file: str, pos_file: str, rel_file: str, lm_tokenizer: str, lm_tokenizer_config: Dict, wlsp_file:str=None, max_length: int=1024,  chunk_max_length: int=128, logger=logger, store_all: bool=False, 
                  **kwargs):
         self.sentences = list()
-        self.tokenizer = Tokenizer.by_name(lm_tokenizer)(**lm_tokenizer_config)
-        self.pad_token_id = self.tokenizer.pad_token_id
+        if lm_tokenizer is not None:
+            self.tokenizer = Tokenizer.by_name(lm_tokenizer)(**lm_tokenizer_config)
+            self.pad_token_id = self.tokenizer.pad_token_id
+        else:
+            self.tokenizer = None
+            self.pad_token_id = 1
+
         self.max_length = max_length
         self.chunk_max_length = chunk_max_length
         self.jsonlfiles = jsonlfiles
         self.logger = logger
         self.store_all = store_all
+        self.wlsp_file = wlsp_file
 
         with open(label_file) as f:
             self.label_dic = json.load(f)
@@ -49,6 +55,12 @@ class ChunkDepJsonLDataset(torch.utils.data.Dataset):
                 self.pos_dic = json.load(f)
         else:
             self.pos_dic = None
+
+        if wlsp_file is not None:
+            with open(wlsp_file) as f:
+                self.wlsp_dic = json.load(f)
+        else:
+            self.wlsp_dic = None
         
         if isinstance(jsonlfiles, str):
             self.logger.info(f"loading {jsonlfiles}")
@@ -99,8 +111,10 @@ class ChunkDepJsonLDataset(torch.utils.data.Dataset):
                 self.sentences.append(js)
             return
 
-        js["subwords"] = self.to_token_ids(js["tokens"])
-        js["input_ids"] = torch.LongTensor(js["subwords"]["input_ids"])
+        if self.tokenizer:
+            js["subwords"] = self.to_token_ids(js["tokens"])
+            js["input_ids"] = torch.LongTensor(js["subwords"]["input_ids"])
+
         js["word_rel_ids"] = self.to_label_ids(js["rel"]) if "rel" in js else None
 
         js['chunk_ids'] = torch.LongTensor(js['bid'])
@@ -110,14 +124,20 @@ class ChunkDepJsonLDataset(torch.utils.data.Dataset):
         if self.pos_dic:
             js["pos_ids"] = self.to_pos_ids(js["pos"]) 
 
-        if len(js["subwords"].word_ids()) == 0:
+        if self.wlsp_dic:
+            wids = [self.pos_dic.get(k, 0) for k in js["wlsp"]]
+            if len(wids) > self.max_length:
+                wids = wids[:self.max_length]
+            js["wlsp_ids"] = torch.LongTensor(wids)
+
+        if self.tokenizer is not None and len(js["subwords"].word_ids()) == 0:
             self.logger.warning(f"no words: {js['tokens']}")
             if self.store_all:
                 js['skip'] = True
                 self.sentences.append(js)
             return
 
-        if len(js["pos"]) != np.max(js["subwords"].word_ids()) + 1:
+        if self.tokenizer is not None and len(js["pos"]) != np.max(js["subwords"].word_ids()) + 1:
             self.logger.warning(f'unmatch length {len(js["pos"])} {np.max(js["subwords"].word_ids()) + 1}, {js["tokens"]} {js["subwords"]} {js["subwords"].word_ids()}')
         self.sentences.append(js)
 

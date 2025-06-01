@@ -23,7 +23,7 @@ class LUWParserModel(nn.Module, Registrable):
         Registrable.__init__(self)
 
     @classmethod
-    def from_config(cls, config: Dict, label_file: str, pos_file: str, rel_file: str=None, **kwargs):
+    def from_config(cls, config: Dict, label_file: str, pos_file: str, rel_file: str=None, wlsp_file:str=None, **kwargs):
         with open(label_file) as f:
             js = json.load(f)
             config["n_class"] = len(js)
@@ -37,6 +37,11 @@ class LUWParserModel(nn.Module, Registrable):
             with open(rel_file) as f:
                 js = json.load(f)
                 config["rel_class"] = len(js)
+        
+        if wlsp_file is not None:
+            with open(wlsp_file) as f:
+                js = json.load(f)
+                config["n_wlsp"] = len(js)
 
         return cls(**config)
 
@@ -366,6 +371,10 @@ class ChunkDependencyParserModel(LUWParserModel):
             形態素の種類数。
         n_pos_emb (int):
             形態素埋め込み表現の次元数。
+        n_wlsp (int):
+            分類語彙表の種類数。
+        n_wlsp_emb (int):
+            分類語彙表の分類番号の埋め込み表現の次元数。
         chunk_class (int):
             chunkクラスラベル数
         word_class (int):
@@ -397,6 +406,8 @@ class ChunkDependencyParserModel(LUWParserModel):
     def __init__(self,
             n_pos: int,
             n_pos_emb: int,
+            n_wlsp: int,
+            n_wlsp_emb: int,
             rel_class: int,
             n_class: int,
             lstm_layers: int,
@@ -410,6 +421,7 @@ class ChunkDependencyParserModel(LUWParserModel):
             lm_class_name: str,
             lm_class_config: Dict,
             pos_padding_idx: int = 1,
+            wlsp_padding_idx: int = 1,
             **kwargs) -> None:
         super().__init__(**kwargs)
         
@@ -417,6 +429,8 @@ class ChunkDependencyParserModel(LUWParserModel):
 
         self.n_pos = n_pos
         self.n_pos_emb = n_pos_emb
+        self.n_wlsp = n_wlsp
+        self.n_wlsp_emb = n_wlsp_emb
         self.rel_class = rel_class
         self.n_class = n_class
         self.lstm_layers = lstm_layers
@@ -429,12 +443,29 @@ class ChunkDependencyParserModel(LUWParserModel):
         self.lm_class_name = lm_class_name
         self.lm_class_config = lm_class_config
         self.pos_padding_idx = pos_padding_idx
+        self.wlsp_padding_idx = wlsp_padding_idx
         
-        self.m_lm = LMEmbedding.by_name(lm_class_name)(**lm_class_config)
+        if lm_class_name is not None:
+            self.m_lm = LMEmbedding.by_name(lm_class_name)(**lm_class_config)
+        else:
+            self.m_lm = None
         self.m_pos_emb = nn.Embedding(n_pos, n_pos_emb, pos_padding_idx) if n_pos > 0 and n_pos_emb > 0 else None
+        self.m_wlsp_emb = nn.Embedding(n_wlsp, n_wlsp_emb, wlsp_padding_idx) if n_wlsp > 0 and n_wlsp_emb > 0 else None
         self.m_pos_dropout = nn.Dropout(pos_dropout) if self.m_pos_emb else None
+        self.m_wlsp_dropout = nn.Dropout(pos_dropout) if self.m_wlsp_emb else None
 
-        self.n_in = self.m_lm.n_out if self.m_pos_emb is None else self.m_lm.n_out + n_pos_emb
+        if self.m_lm:
+            self.n_in = self.m_lm.n_out if self.m_pos_emb is None else self.m_lm.n_out + n_pos_emb
+            self.n_out = self.m_lm.n_out
+        else:
+            self.n_in = n_pos_emb + n_wlsp_emb
+            self.n_out = self.n_in
+
+        if lstm_layers > 0:
+            self.m_encoder = nn.LSTM(self.n_in, self.n_in, num_layers=lstm_layers, batch_first=True, dropout=lstm_dropout, bidirectional=True)
+            self.n_in = self.n_in * 2
+        else:
+            self.m_encoder = None
 
         if "max" in word_pooling:
             self.word_pooling = self.max
@@ -443,7 +474,7 @@ class ChunkDependencyParserModel(LUWParserModel):
         elif "mean" in word_pooling:
             self.word_pooling = torch.mean
         elif "attention":
-            self.word_pooling = SelfAttentionPooling(self.m_lm.n_out)
+            self.word_pooling = SelfAttentionPooling(self.n_out)
         else:
             self.word_pooling = None
 
@@ -460,12 +491,6 @@ class ChunkDependencyParserModel(LUWParserModel):
 
         self.m_word = MLP(self.n_in, n_class, mlp_dropout)
 
-        if lstm_layers > 0:
-            self.m_encoder = nn.LSTM(self.n_in, self.n_in, num_layers=lstm_layers, batch_first=True, dropout=lstm_dropout, bidirectional=True)
-            self.n_in = self.n_in * 2
-        else:
-            self.m_encoder = None
-
         self.m_head = MLP(self.n_in, self.n_in)
         self.m_dep = MLP(self.n_in, self.n_in)
         self.m_deprel = Biaffine(self.n_in, self.rel_class)
@@ -479,36 +504,56 @@ class ChunkDependencyParserModel(LUWParserModel):
     def max(value, **kwargs):
         return torch.max(value, **kwargs).values
 
-    def forward(self, words: torch.Tensor, word_ids: torch.Tensor, chunk_ids: torch.Tensor, pos: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+    def forward(self, words: torch.Tensor, word_ids: torch.Tensor, chunk_ids: torch.Tensor, pos: torch.Tensor, wlsp: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         """
         words: [batch, subwords_len]
         word_ids: [batch, subword_len] the indices pointing to original words
         chunk_ids: [batch, word_len] the indices pointing to original words
         pos: [batch, words_len]
         """
-        words_emb = self.m_lm(words)
+
+        if self.m_lm:
+            words_emb = self.m_lm(words)
+        else:
+            words_emb = None
 
         we = list()
         ce = list()
 
-        if self.m_pos_emb and torch.max(word_ids)+1 != pos.size()[-1]:
+        if self.m_pos_emb and self.m_lm and torch.max(word_ids)+1 != pos.size()[-1]:
             print(torch.max(word_ids, dim=1), file=sys.stderr)
         L = torch.max(word_ids) + 1 if not self.m_pos_emb else pos.size()[-1] # なぜかPOSが多い時がある。調査要
         C = torch.max(chunk_ids) + 1
 
-        for i in range(L):
-            wi = word_ids.eq(i).unsqueeze(-1)
-            mask = torch.cat([wi for _ in range(words_emb.size()[-1])], dim=-1)
-            _o = words_emb * mask # batch, num of subwords in a word, hidden (acctually masked zero)
-            we.append(self.word_pooling(_o, dim=1, keepdim=True)) # batch, 1, hidden
+        if self.m_lm:
+            for i in range(L):
+                wi = word_ids.eq(i).unsqueeze(-1)
+                mask = torch.cat([wi for _ in range(words_emb.size()[-1])], dim=-1)
+                _o = words_emb * mask # batch, num of subwords in a word, hidden (acctually masked zero)
+                we.append(self.word_pooling(_o, dim=1, keepdim=True)) # batch, 1, hidden
 
 
-        words_emb = torch.cat(we, 1)
+            words_emb = torch.cat(we, 1)
 
-        if self.m_pos_emb:
-            pos_embs = self.m_pos_emb(pos)
-            pos_embs = self.m_pos_dropout(pos_embs)
-            words_emb = torch.cat((words_emb, pos_embs), dim=-1) # batch, words_len, hidden
+            if self.m_pos_emb:
+                pos_embs = self.m_pos_emb(pos)
+                pos_embs = self.m_pos_dropout(pos_embs)
+                words_emb = torch.cat((words_emb, pos_embs), dim=-1) # batch, words_len, hidden
+        else:
+            if self.m_pos_emb:
+                pos_embs = self.m_pos_emb(pos)
+                pos_embs = self.m_pos_dropout(pos_embs)
+                words_emb = pos_embs
+            if self.m_wlsp_emb:
+                wlsp_emb = self.m_wlsp_emb(wlsp)
+                wlsp_emb = self.m_wlsp_dropout(wlsp_emb)
+                if words_emb is not None:
+                    words_emb = torch.cat((words_emb, wlsp_emb), dim=-1)
+                else:
+                    words_emb = wlsp_emb
+            
+            if self.m_encoder:
+                words_emb, _ = self.m_encoder(words_emb)  # batch, words_len, hidden *2
 
 
         for i in range(C):
@@ -517,12 +562,8 @@ class ChunkDependencyParserModel(LUWParserModel):
             _o = words_emb * mask # batch, num of subwords in a chunk, hidden (acctually masked zero)
             ce.append(self.chunk_pooling(_o, dim=1, keepdim=True)) # batch, 1, hidden
 
-        chunk_emb = torch.cat(ce, 1) #
+        feats = torch.cat(ce, 1) #
 
-        if self.m_encoder:
-            feats, _ = self.m_encoder(chunk_emb)  # batch, words_len, hidden *2
-        else:
-            feats = chunk_emb  # batch, words_len, hidden
 
         head = self.m_head(feats)
         dep = self.m_dep(feats)

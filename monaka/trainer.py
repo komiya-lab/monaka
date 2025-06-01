@@ -105,6 +105,11 @@ class DependencyTrainer(Trainer):
             with open(os.path.join(output_dir, "pos.json"), "w") as f:
                 json.dump(pos_dic, f, indent=True, ensure_ascii=False)
 
+        wlsp_dic = getattr(self.train_data, "wlsp_dic", None)
+        if wlsp_dic is not None:
+            with open(os.path.join(output_dir, "wlsp_dic.json"), "w") as f:
+                json.dump(wlsp_dic, f, indent=True, ensure_ascii=False)
+
         logger.info("loading dev files")
         self.dev_data = ChunkDepJsonLDataset(dev_files, **options)
 
@@ -184,18 +189,22 @@ class DependencyTrainer(Trainer):
             logger.info(f"Epoch {epoch} / {self.epochs}:")
 
             for i, data in tqdm.tqdm(enumerate(train_loader)):
-                subwords = pad_sequence(data["input_ids"], batch_first=True, padding_value=self.train_data.pad_token_id).to(device)
-                word_ids = pad_sequence([torch.LongTensor(js.word_ids()) for js in data["subwords"]], batch_first=True, padding_value=-1).to(device)
+                subwords = pad_sequence(data["input_ids"], batch_first=True, padding_value=self.train_data.pad_token_id).to(device) if 'input_ids' in data else None
+                if 'input_ids' in data:
+                    word_ids = pad_sequence([torch.LongTensor(js.word_ids()) for js in data["subwords"]], batch_first=True, padding_value=-1).to(device)
+                else:
+                    word_ids = pad_sequence([torch.LongTensor([i for i in range(len(tokens))]) for tokens in data['tokens']]  , batch_first=True, padding_value=-1).to(device)
                 chunk_ids = pad_sequence(data["chunk_ids"], batch_first=True, padding_value=-1).to(device)
                 dep_ids = pad_sequence(data["dep_ids"], batch_first=True, padding_value=-1).to(device)
                 word_rel_ids = pad_sequence(data["word_rel_ids"], batch_first=True, padding_value=self.train_data.pad_token_id).to(device)
                 dep_rel_ids = pad_sequence(data["dep_rel_ids"], batch_first=True, padding_value=self.train_data.pad_token_id).to(device)
                 pos_ids = pad_sequence(data["pos_ids"], batch_first=True, padding_value=1).to(device) if "pos_ids" in data else None
+                wlsp_ids = pad_sequence(data["wlsp_ids"], batch_first=True, padding_value=1).to(device) if "wlsp_ids" in data else None
                 wmask = word_rel_ids.ne(1)
                 dmask = dep_ids.ne(-1)
                 rmask = dep_rel_ids.ne(1)
 
-                dep_out, deprel_out, word_out  = self.model(subwords, word_ids, chunk_ids, pos_ids)
+                dep_out, deprel_out, word_out  = self.model(subwords, word_ids, chunk_ids, pos_ids, wlsp_ids)
                 loss, dep_loss, rel_loss, wrd_loss = self.model.loss(dep_out, deprel_out, word_out , dep_ids, dep_rel_ids, word_rel_ids, wmask, dmask, rmask)
                 writer.add_scalar("Loss/train", loss, total_itr + i)
                 writer.add_scalar("DependencyLoss/train", dep_loss, total_itr + i)
@@ -263,18 +272,22 @@ class DependencyTrainer(Trainer):
         wrd_loss = 0
         self.model.eval()
         for data in dataloader:
-                subwords = pad_sequence(data["input_ids"], batch_first=True, padding_value=self.train_data.pad_token_id).to(device)
-                word_ids = pad_sequence([torch.LongTensor(js.word_ids()) for js in data["subwords"]], batch_first=True, padding_value=-1).to(device)
+                subwords = pad_sequence(data["input_ids"], batch_first=True, padding_value=self.train_data.pad_token_id).to(device) if 'input_ids' in data else None
+                if 'input_ids' in data:
+                    word_ids = pad_sequence([torch.LongTensor(js.word_ids()) for js in data["subwords"]], batch_first=True, padding_value=-1).to(device)
+                else:
+                    word_ids = pad_sequence([torch.LongTensor([i for i in range(len(tokens))]) for tokens in data['tokens']]  , batch_first=True, padding_value=-1).to(device)
                 chunk_ids = pad_sequence(data["chunk_ids"], batch_first=True, padding_value=-1).to(device)
                 dep_ids = pad_sequence(data["dep_ids"], batch_first=True, padding_value=-1).to(device)
                 word_rel_ids = pad_sequence(data["word_rel_ids"], batch_first=True, padding_value=1).to(device)
                 dep_rel_ids = pad_sequence(data["dep_rel_ids"], batch_first=True, padding_value=1).to(device)
                 pos_ids = pad_sequence(data["pos_ids"], batch_first=True, padding_value=1).to(device) if "pos_ids" in data else None
+                wlsp_ids = pad_sequence(data["wlsp_ids"], batch_first=True, padding_value=1).to(device) if "wlsp_ids" in data else None
                 wmask = word_rel_ids.ne(1)
                 dmask = dep_ids.ne(-1)
                 rmask = dep_rel_ids.ne(1)
 
-                dep_out, deprel_out, word_out  = self.model(subwords, word_ids, chunk_ids, pos_ids)
+                dep_out, deprel_out, word_out  = self.model(subwords, word_ids, chunk_ids, pos_ids, wlsp_ids)
                 l, dep_l, rel_l, wrd_l = self.model.loss(dep_out, deprel_out, word_out , dep_ids, dep_rel_ids, word_rel_ids, wmask, dmask, rmask)
                 loss += l.detach().cpu().item()
                 dep_loss += dep_l.detach().cpu().item()
