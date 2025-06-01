@@ -379,6 +379,8 @@ class ChunkDependencyParserModel(LUWParserModel):
             chunkクラスラベル数
         word_class (int):
             wordクラスラベル数
+        encoder_type (str):
+            エンコーダの種類 lstm or transformer
         lstm_layers (int);
             LSTM層数 0以下でLSTMを使用しない
         word_pooling (str):
@@ -410,6 +412,7 @@ class ChunkDependencyParserModel(LUWParserModel):
             n_wlsp_emb: int,
             rel_class: int,
             n_class: int,
+            encoder_type: str,
             lstm_layers: int,
             word_pooling: str,
             chunk_pooling: str,
@@ -433,6 +436,7 @@ class ChunkDependencyParserModel(LUWParserModel):
         self.n_wlsp_emb = n_wlsp_emb
         self.rel_class = rel_class
         self.n_class = n_class
+        self.encoder_type = encoder_type
         self.lstm_layers = lstm_layers
         self.word_pooling_name = word_pooling
         self.chunk_pooling_name = chunk_pooling
@@ -462,8 +466,11 @@ class ChunkDependencyParserModel(LUWParserModel):
             self.n_out = self.n_in
 
         if lstm_layers > 0:
-            self.m_encoder = nn.LSTM(self.n_in, self.n_in, num_layers=lstm_layers, batch_first=True, dropout=lstm_dropout, bidirectional=True)
-            self.n_in = self.n_in * 2
+            if encoder_type == 'transformer':
+                self.m_encoder = nn.TransformerEncoder(nn.TransformerEncoderLayer(self.n_in, nhead=8, dropout=lstm_dropout, batch_first=True), lstm_layers)
+            else:
+                self.m_encoder = nn.LSTM(self.n_in, self.n_in, num_layers=lstm_layers, batch_first=True, dropout=lstm_dropout, bidirectional=True)
+                self.n_in = self.n_in * 2
         else:
             self.m_encoder = None
 
@@ -553,7 +560,10 @@ class ChunkDependencyParserModel(LUWParserModel):
                     words_emb = wlsp_emb
             
             if self.m_encoder:
-                words_emb, _ = self.m_encoder(words_emb)  # batch, words_len, hidden *2
+                if self.encoder_type == 'transformer':
+                    words_emb = self.m_encoder(words_emb)  # batch, words_len, hidden 
+                else:
+                    words_emb, _ = self.m_encoder(words_emb)  # batch, words_len, hidden *2
 
 
         for i in range(C):
