@@ -380,6 +380,46 @@ def score(goldjsonl:str, predjsonl:str):
     print(json.dumps(res, indent=True))
 
 
+@app.command()
+def to_cabocha(datajsonl, unidiccsv: str):
+    with open(unidiccsv) as f:
+        rd = csv.reader(f)
+        unid = dict()
+        for row in rd:
+            surface = row[0]
+            pos = row[4:10]
+            lemmaid = row[-1]
+            d = unid.get(surface, dict())
+            d['-'.join(pos)] = {'rows': row, 'lemmaid':lemmaid, 'pos': pos}
+            unid[surface] = d
+
+    with open(datajsonl) as f:
+        for line in f:
+            js = json.loads(line)
+            pbid = -1
+            lines = list()
+            for token, pos, bid in zip(js['tokens'], js['pos'], js['bid']):
+                if bid != pbid:
+                    pbid = bid
+                    lines.append(f"* {bid} -1D")
+                feat = None
+                if token in unid:
+                    #print(f'token {token} found', file=sys.stderr)
+
+                    pos_tokens = set(pos.split('-'))
+                    for key, d in unid[token].items():
+                        keyset = set(key.split('-'))
+                        if pos_tokens.issubset(keyset):
+                            feat = ','.join([r if r != ',' else '，' for r in d['rows'][4:]])
+                            break
+                if not feat:
+                    feat = ','.join(['' for _ in range(29)])
+                lines.append(f"{token.strip()}\t{feat}")
+            lines.append('EOS')
+            print('\n'.join(lines))
+                
+
+
 
 
 
