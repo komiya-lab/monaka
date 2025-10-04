@@ -643,6 +643,50 @@ def lemma_stats(jsonfiles: List[str]):
 
     print(json.dumps(res, indent=True, ensure_ascii=False))
 
+def load_cabocha(fname: str):
+    with open(fname) as f:
+        buf = {"sentence": "", "dep": [], "tokens": [], "chunk": []}
+        c = -1
+        for line in f:
+            if line.startswith("#"):
+                continue
+            elif line.startswith("EOS"):
+                yield buf
+                buf = {"sentence": "", "dep": [], "tokens": [], "chunk": []}
+                c = -1
+                continue
+            elif line.startswith("*"):
+                tokens = line.strip().split(" ")
+                dep = int(tokens[2][:-1])
+                c = int(tokens[1])
+                #print(tokens)
+                buf["dep"].append(dep)
+                continue
+            else:
+                #print(c)
+                tokens = line.strip().split("\t")
+                buf["sentence"] += tokens[0]
+                buf["tokens"].append(tokens)
+                buf["chunk"].append(c)
+        if len(buf["sentence"]) > 0:
+            yield buf
+
+@app.command()
+def cabocha_eval(result: str, gold: str):
+    rgen = load_cabocha(result)
+    ggen = load_cabocha(gold)
+    a = 0
+    c = 0
+    for r, g in zip(rgen, ggen):
+        #print(r)
+        a += len(g["dep"])
+        for rd, gd in zip(r["dep"], g["dep"]):
+            if rd == gd:
+                c += 1
+
+    print(f"sentence: {c/a*100} ({c}/{a})")
+
+
 
 if __name__ == "__main__":
     app()
