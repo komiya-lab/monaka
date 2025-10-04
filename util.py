@@ -250,12 +250,17 @@ def to_sentences(data, luw:bool):
             "file(S)"]
     buf_n = list()
     buf_t = list()
+    prv_meta = None
     for d in data:
         n_ = d["orthToken(S)"]
-            
+        if prv_meta is None:
+            prv_meta = {k: d[k] for k in meta}
+
         if d["boundary(S)"] == "B" and len(buf_n) > 0:
             dd = {"sentence": "".join(buf_n),  "tokens": buf_t}
-            dd.update({k: d[k] for k in meta})
+            meta_ = {k: d[k] for k in meta}
+            dd.update(prv_meta)
+            prv_meta = meta_
             yield dd
             buf_n.clear()
             buf_t.clear()
@@ -387,7 +392,10 @@ def merge_jsonl(basefile: str, updatefile: str, suffix: str=''):
             for tb, tu in zip(jsb['tokens'], jsu['tokens']):
                 if keys is None:
                     keys = list(tb.keys())
-                udic = {f"{k}_{suffix}": v for k, v in tu.items() if k not in keys}
+                if len(suffix) > 0:
+                    udic = {f"{k}_{suffix}": v for k, v in tu.items() if k not in keys}
+                else:
+                    udic = {f"{k}": v for k, v in tu.items() if k not in keys}
                 tb.update(udic)
             print(json.dumps(jsb, ensure_ascii=False))
 
@@ -452,9 +460,17 @@ def jsonl2chj(jsonlfile: str, sep: str="\t"):
                 token.update(meta)
                 writer.writerow([token[k] for k in head])
 
-def comainu_js(js: dict, luw: str, luw_pos: str):
+def comainu_js(js: dict, bunsetsu: str, luw: str, luw_pos: str):
     files = js['file(S)']
     p = 0
+    if len(js['tokens']) > 0:
+        js['tokens'][0][bunsetsu] = 'B'
+        if not js['tokens'][0][luw].startswith('B'):
+            js['tokens'][0][luw] = 'B'
+            js['tokens'][0][luw_pos] = js['tokens'][0]['pos(S)']
+            js['tokens'][0]['l_cType'] = js['tokens'][0]['sysCType(S)']
+            js['tokens'][0]['l_cForm'] = js['tokens'][0]['cForm(S)']
+    
     for i, token in enumerate(js['tokens']):
         token['file(S)'] = files
         L = token[luw]
@@ -488,7 +504,7 @@ def jsonl2comainu(jsonfile: str, bunsetsu: str='bunsetsu1(L)_formOrth_all_period
     with open(jsonfile) as f:
         for line in f:
             js = json.loads(line)
-            js = comainu_js(js, luw, luw_pos)
+            js = comainu_js(js, bunsetsu, luw, luw_pos)
             for token in js['tokens']:
                 row = [token.get(h, "") for h in head]
                 L = token[luw]
@@ -596,6 +612,36 @@ def luw4lemma(jsonlfile: str):
                 } for i in range(L)]
 
             print(json.dumps(res, ensure_ascii=False))
+
+
+@app.command()
+def lemma_stats(jsonfiles: List[str]):
+    res = {"all": {'c':0, 'a': 0}}
+    for fname in jsonfiles:
+        with open(fname) as f:
+            js:dict = json.load(f)
+        for v in js.values():
+            pos = v['pos']
+            p_tokens = pos.split('-')
+            targets = ['all']
+            for i in range(len(p_tokens)):
+                targets.append('-'.join(p_tokens[0:i+1]))
+            
+            suw_lemma = ''.join([s['lemma'] for s in v['suw']])
+            lemma = v['lemma']
+            
+            for target in targets:
+                d = res.get(target, {'c': 0, 'a': 0})
+
+                d['a'] += 1
+                if suw_lemma == lemma:
+                    d['c'] += 1
+                res[target] = d
+
+    for d in res.values():
+        d['suw_acc'] = d['c'] / d['a']
+
+    print(json.dumps(res, indent=True, ensure_ascii=False))
 
 
 if __name__ == "__main__":

@@ -562,7 +562,7 @@ class ChunkDependencyParserModel(LUWParserModel):
             
             if self.m_encoder:
                 if self.encoder_type == 'transformer':
-                    words_emb = self.m_position_enc(words_emb)
+                    #words_emb = self.m_position_enc(words_emb)
                     words_emb = self.m_encoder(words_emb)  # batch, words_len, hidden 
                 else:
                     words_emb, _ = self.m_encoder(words_emb)  # batch, words_len, hidden *2

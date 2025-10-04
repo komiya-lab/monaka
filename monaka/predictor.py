@@ -275,7 +275,7 @@ class CabochaDepEncoder(DepEncoder):
             if bid != pbid:
                 pbid = bid
                 head = deps[bid]['head']
-                if head == bid:
+                if head == bid or head >= len(deps):
                     head = -1
                 out.append(f'* {bid} {head}D')
             feat = [f.replace(',', '，') for f in feat]
@@ -910,6 +910,7 @@ class DepPredictor:
 
         self.config["dataeset_options"]["label_file"] = os.path.join(model_dir, "labels.json")
         self.config["dataeset_options"]["rel_file"] = os.path.join(model_dir, "rels.json")
+        self.config["dataeset_options"]["wlsp_file"] = os.path.join(model_dir, "wlsp_dic.json")
 
         posfile = os.path.join(model_dir, "pos.json")
         if os.path.exists(posfile):
@@ -955,26 +956,32 @@ class DepPredictor:
 
         #print(self.inv_label_dic)
         for data in dataloader:
-                subwords = pad_sequence(data["input_ids"], batch_first=True, padding_value=dataset.pad_token_id).to(device)
-                word_ids = pad_sequence([torch.LongTensor(js.word_ids()) for js in data["subwords"]], batch_first=True, padding_value=-1).to(device)
+                subwords = pad_sequence(data["input_ids"], batch_first=True, padding_value=dataset.pad_token_id).to(device) if 'input_ids' in data else None
+                if 'input_ids' in data:
+                    word_ids = pad_sequence([torch.LongTensor(js.word_ids()) for js in data["subwords"]], batch_first=True, padding_value=-1).to(device)
+                else:
+                    word_ids = pad_sequence([torch.LongTensor([i for i in range(len(tokens))]) for tokens in data['tokens']]  , batch_first=True, padding_value=-1).to(device)
+                #word_ids = pad_sequence([torch.LongTensor(js.word_ids()) for js in data["subwords"]], batch_first=True, padding_value=-1).to(device)
                 chunk_ids = pad_sequence(data["chunk_ids"], batch_first=True, padding_value=-1).to(device)
                 #dep_ids = pad_sequence(data["dep_ids"], batch_first=True, padding_value=-1).to(device)
                 #word_rel_ids = pad_sequence(data["word_rel_ids"], batch_first=True, padding_value=1).to(device)
                 #dep_rel_ids = pad_sequence(data["dep_rel_ids"], batch_first=True, padding_value=1).to(device)
                 pos_ids = pad_sequence(data["pos_ids"], batch_first=True, padding_value=1).to(device) if "pos_ids" in data else None
+                wlsp_ids = pad_sequence(data["wlsp_ids"], batch_first=True, padding_value=1).to(device) if "wlsp_ids" in data else None
                 #wmask = word_rel_ids.ne(1)
                 #dmask = dep_ids.ne(-1)
                 #rmask = dep_rel_ids.ne(1)
 
-                dep_out, deprel_out, word_out  = self.model(subwords, word_ids, chunk_ids, pos_ids)
+                dep_out, deprel_out, word_out  = self.model(subwords, word_ids, chunk_ids, pos_ids, wlsp_ids)
                 #deprel_out = deprel_out.permute((0,2,3,1)) # [batch, chunk_class, chunk_len, chunk_len] -> [batch, chunk_len, chunk_len, chunk_class]
                 #dep_pred = torch.argmax(dep_out, dim=-1)
                 softmax = torch.nn.functional.softmax
                 deprel_out[:, self.rel_dic['root'], :, :] = -1000.
                 rel_pred = torch.argmax(deprel_out, dim=1) #[batch, chunk_len, chunk_len]
-                wrd_shead_np = softmax(word_out[:, :, self.label_dic['shead']], dim=-1).detach().cpu().numpy()
+                shead_ids = [i for k, i in self.label_dic.items() if 'shead' in k]
+                wrd_shead_np = softmax(word_out[:, :, shead_ids], dim=-1).detach().cpu().numpy()
                 word_out2 = word_out.detach()
-                word_out2[:, :, self.label_dic['shead']] = -1000.
+                word_out2[:, :, shead_ids] = -1000.
                 wrd_pred = torch.argmax(word_out2, dim=-1)
 
                 dep_pred_np = softmax(dep_out, dim=-1).detach().cpu().numpy()
@@ -982,9 +989,9 @@ class DepPredictor:
                 wrd_pred_np = wrd_pred.detach().cpu().numpy()
                 nulls = ['_' for _ in data['tokens']]
 
-                for depp, relp, wrdp, shp, bnst, pos, tokens, bid, sentid, text, upos, misc, lemma in zip(dep_pred_np, rel_pred_np, wrd_pred_np, wrd_shead_np, 
+                for depp, relp, wrdp, shp, bnst, pos, tokens, bid, sentid, text, upos, misc, lemma, undc in zip(dep_pred_np, rel_pred_np, wrd_pred_np, wrd_shead_np, 
                         data['bunsetsu'], data['pos'], data['tokens'], data['bid'], data['sent_id'], data['text'], 
-                        data.get('upos', nulls), data.get('misc', nulls), data.get('lemma', nulls)):
+                        data.get('upos', nulls), data.get('misc', nulls), data.get('lemma', nulls), data.get('unidic', nulls)):
                     res = {
                         "sent_id": sentid,
                         "text": text,
@@ -994,7 +1001,8 @@ class DepPredictor:
                         "pos": pos,
                         "upos": upos,
                         "misc": misc,
-                        "lemma": lemma
+                        "lemma": lemma,
+                        "unidic": undc
                     }
                     roots = np.array([depp[i,i] for i in range(len(bnst))])
                     ndepp = np.hstack((roots.reshape(len(bnst), 1), depp[:len(bnst), :len(bnst)]))
@@ -1031,10 +1039,10 @@ class DepPredictor:
                     res['dependency'][root]['rel'] = "root"
                     bid = np.array(bid)
                     indices = np.arange(len(bid))
-                    for i in range(np.max(bid)+1):
-                        ind = np.where(bid == i)
+                    #for i in range(np.max(bid)+1):
+                    #    ind = np.where(bid == i)
                         #print(ind)
-                        j = np.argmax(shp[ind])
-                        k = indices[ind][j]
-                        res['rel'][k] = 'shead'
+                    #    j = np.argmax(shp[ind])
+                    #    k = indices[ind][j]
+                    #    res['rel'][k] = 'shead'
                     yield encoder(res)

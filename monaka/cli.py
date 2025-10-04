@@ -215,7 +215,9 @@ def predict_dep(model_dir: Path, input: Path, decoder_name:str='jsonl', encoder_
     predictor = DepPredictor(model_dir=model_dir)
     with open(input) as f:
         input_ = [line for line in f]
-    for res in predictor.predict(input_, decoder_name, encoder_name, batch_size, device):
+    for i, res in enumerate(predictor.predict(input_, decoder_name, encoder_name, batch_size, device)):
+        if 'cabocha' in encoder_name:
+            print(f'#! DOC {i}')
         print(res)
 
 

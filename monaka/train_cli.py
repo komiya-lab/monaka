@@ -99,6 +99,7 @@ def train_cv(config_file: str, output_dir: str, data_dir: Path ='', device: str=
             json.dump(config, f, indent=True, ensure_ascii=False)
 
         del trainer
+        print(config)
         trainer = Trainer.by_name(trainer_name)(output_dir=cvdir, **config)
         trainer.train(device, local_rank)
 

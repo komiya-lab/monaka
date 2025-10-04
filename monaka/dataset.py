@@ -97,7 +97,7 @@ class ChunkDepJsonLDataset(torch.utils.data.Dataset):
     def load_dict(self, js: dict):
         js['skip'] = False
 
-        if len(js["rel"]) != len(js["tokens"]):
+        if "rel" in js and len(js["rel"]) != len(js["tokens"]):
             self.logger.warning(f'skip loading {js["sentence"]} because of pos {len(js["pos"])} and token {len(js["tokens"])} length unmatch')
             if self.store_all:
                 js['skip'] = True
