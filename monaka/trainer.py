@@ -129,6 +129,8 @@ class DependencyTrainer(Trainer):
         self.verbose = verbose
         self.evaluate_step = evaluate_step
         self.model_name = model_name
+        if seed < 0:
+            seed = np.random.randint(1, 1024*1024)
         conf = {
             "batch_size": batch_size,
             "epochs": epochs,
