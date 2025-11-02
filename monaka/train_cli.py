@@ -36,19 +36,30 @@ def create_vocab(output_dir: Path, jsonl_files: List[Path]):
 
 @app.command()
 def train(config_file: str, output_dir: str, device: str="cpu", local_rank: int=-1, trainer_name: str="segmentation",
-          train_files: Optional[List[Path]]=None, dev_files: Optional[List[Path]]=None, test_files: Optional[List[Path]]=None):
+          train_files: Optional[List[Path]]=None, dev_files: Optional[List[Path]]=None, test_files: Optional[List[Path]]=None,
+          vocab_dir: Optional[str]=None):
     with open(config_file) as f:
         config = json.load(f)
 
+    if vocab_dir is not None:
+        config["dataeset_options"]["label_file"] = f"{vocab_dir}/labels.json"
+        config["dataeset_options"]["pos_file"] = f"{vocab_dir}/pos.json"
+
     print(train_files)
     if train_files is not None and len(train_files) > 0:
-        config["train_files"] = [str(t) for t in train_files]
+        config["train_files"] = list()
+        for fname in train_files:
+            config["train_files"].extend(glob.glob(str(fname)))
 
     if dev_files is not None and len(dev_files) > 0:
-        config["dev_files"] = [str(t) for t in dev_files]
+        config["dev_files"] = list()
+        for fname in dev_files:
+            config["dev_files"].extend(glob.glob(str(fname)))
 
     if test_files is not None and len(test_files) > 0:
-        config["test_files"] = [str(t) for t in test_files]
+        config["test_files"] = list()
+        for fname in test_files:
+            config["test_files"].extend(glob.glob(str(fname)))
 
     os.makedirs(output_dir, exist_ok=True)
     with open(os.path.join(output_dir, "config.json"), "w") as f:

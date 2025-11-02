@@ -6,9 +6,9 @@ fugashi[unidic]
 ipadic
 tqdm
 registrable
-transformers
+transformers==4.35.0
 tensorboard
-setencepiece
+#setencepiece==0.2.0
 accelerate
 rich
 numpy<2.0.0

@@ -101,10 +101,19 @@ class SegmentationTrainer(Trainer):
                 json.dump(pos_dic, f, indent=True, ensure_ascii=False)
 
         logger.info("loading dev files")
-        self.dev_data = LUWJsonLDataset(dev_files, **options)
+        self.dev_data = dict()
+        for dev_f in dev_files:
+            logger.info(f"loading dev file: {dev_f}")
+            self.dev_data[dev_f] = LUWJsonLDataset([dev_f], **options)
 
         logger.info("loading test files")
-        self.test_data = LUWJsonLDataset(test_files, **options) if test_files else None
+        if test_files:
+            self.test_data = dict()
+            for test_f in test_files:
+                logger.info(f"loading test file: {test_f}")
+                self.test_data[test_f] = LUWJsonLDataset([test_f], **options)
+        else:
+            self.test_data = None
 
         self.batch_size=batch_size
         self.epochs = epochs
@@ -168,8 +177,15 @@ class SegmentationTrainer(Trainer):
         writer = SummaryWriter(log_dir=os.path.join(self.output_dir, "tb"))
 
         train_loader = DataLoader(self.train_data, self.batch_size, shuffle=True, collate_fn=LUWJsonLDataset.collate_function)
-        dev_loader = DataLoader(self.dev_data, batch_size=self.batch_size, shuffle=False, collate_fn=LUWJsonLDataset.collate_function)
-        test_loader = DataLoader(self.test_data, batch_size=self.batch_size, shuffle=False, collate_fn=LUWJsonLDataset.collate_function) if self.test_data else None
+        
+        dev_loader = dict()
+        for k, d in self.dev_data.items():
+            dev_loader[k] = DataLoader(d, batch_size=self.batch_size, shuffle=False, collate_fn=LUWJsonLDataset.collate_function)
+        
+        if self.test_data:
+            test_loader = dict()
+            for k, d in self.test_data.items():
+                test_loader[k] = DataLoader(d, batch_size=self.batch_size, shuffle=False, collate_fn=LUWJsonLDataset.collate_function) if self.test_data else None
         metric = -1
         total_itr = 0
 
@@ -195,16 +211,38 @@ class SegmentationTrainer(Trainer):
                 optimizer.step()
                 scheduler.step()
                 if (i+1) % self.evaluate_step == 0:
-                    dev_loss, dev_acc = self.evaluate(dev_loader, device)
-                    writer.add_scalar("Loss/dev", dev_loss, total_itr + i)
-                    writer.add_scalar("Acc/dev", dev_acc, total_itr + i)
+                    dev_loss = 0
+                    dev_acc = 0 
+                    c = 0
+                    for k, l in dev_loader.items():
+                        c += 1
+                        dl, da = self.evaluate(l, device)
+                        dev_acc += da
+                        dev_loss += dl
+                        logger.info(f"dev evaluation: {k}")
+                        writer.add_scalar(f"Loss/{k}/dev", dev_loss, total_itr + i)
+                        writer.add_scalar(f"Acc/{k}/dev", dev_acc, total_itr + i)
+                    
+                    writer.add_scalar("Loss/dev", dev_loss/c, total_itr + i)
+                    writer.add_scalar("Acc/dev", dev_acc/c, total_itr + i)
 
             total_itr += i
             t = datetime.datetime.now() - start
             logger.info("dev evaluation")
-            dev_loss, dev_acc = self.evaluate(dev_loader, device)
-            writer.add_scalar("Loss/dev", dev_loss, total_itr)
-            writer.add_scalar("Acc/dev", dev_acc, total_itr)
+            dev_loss = 0
+            dev_acc = 0 
+            c = 0
+            for k, l in dev_loader.items():
+                c += 1
+                dl, da = self.evaluate(l, device)
+                dev_acc += da
+                dev_loss += dl
+                logger.info(f"dev evaluation: {k}")
+                writer.add_scalar(f"Loss/{k}/dev", dl, total_itr + i)
+                writer.add_scalar(f"Acc/{k}/dev", da, total_itr + i)
+            
+            writer.add_scalar("Loss/dev", dev_loss/c, total_itr + i)
+            writer.add_scalar("Acc/dev", dev_acc/c, total_itr + i)
 
             if dev_acc > metric:
                 logger.info("save best model")
@@ -213,9 +251,20 @@ class SegmentationTrainer(Trainer):
 
             if test_loader:
                 logger.info("test evaluation")
-                test_loss, test_acc = self.evaluate(test_loader, device)
-                writer.add_scalar("Loss/test", test_loss, total_itr)
-                writer.add_scalar("Acc/test", test_acc, total_itr)
+                test_loss = 0
+                test_acc = 0 
+                c = 0
+                for k, l in test_loader.items():
+                    c += 1
+                    dl, da = self.evaluate(l, device)
+                    test_acc += da
+                    test_loss += dl
+                    logger.info(f"test evaluation: {k}")
+                    writer.add_scalar(f"Loss/{k}/test", dl, total_itr + i)
+                    writer.add_scalar(f"Acc/{k}/test", da, total_itr + i)
+                
+                writer.add_scalar("Loss/test", test_loss/c, total_itr + i)
+                writer.add_scalar("Acc/test", test_acc/c, total_itr + i)
             logger.info(f"{t}s elapsed\n")
 
         self.save(os.path.join(self.output_dir, f"last_at_{epoch}.pt"))
