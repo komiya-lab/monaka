@@ -496,7 +496,7 @@ class BCCWJComainu(Encoder):
 
             outs.append(out)
             count += 1
-        return "\n".join([','.join(o) for o in outs])
+        return "\n".join(['\t'.join(o) for o in outs])
 
 
 @Encoder.register("mrp")
