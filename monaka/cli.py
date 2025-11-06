@@ -1,5 +1,6 @@
 import os
 
+import csv
 import sys
 import urllib.parse
 import typer
@@ -12,7 +13,7 @@ from pathlib import Path
 from typing import List, Optional, Union
 from rich.progress import Progress
 from prettytable import PrettyTable
-from monaka.predictor import Predictor, LemmaPredictor, RESC_DIR, Encoder, Decoder
+from monaka.predictor import Predictor, LemmaPredictor, EnsemblePredictor, RESC_DIR, Encoder, Decoder
 from monaka.metric import SpanBasedMetricReporter
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
@@ -50,6 +51,104 @@ MODEL_URL = "https://chamame.ninjal.ac.jp/chamame-monaka/"
 MODEL_URLS = {
     "all_in_one": MODEL_URL + "all_in_one.zip"
 }
+BCPEXPORT_LIST = [
+    "corpusName(S)",
+"file(S)",
+"start(S)",
+"end(S)",
+"boundary(S)",
+"orthToken(S)",
+"pronToken(S)",
+"reading(S)",
+"lemma(S)",
+"originalText(S)",
+"pos(S)",
+"sysCType(S)",
+"cForm(S)",
+"apply(S)",
+"additionalInfo(S)",
+"lid(S)",
+"meaning(S)",
+"UpdUser(S)",
+"UpdDate(S)",
+"order(S)",
+"note(S)",
+"open(S)",
+"close(S)",
+"wType(S)",
+"fix(S)",
+"variable(S)",
+"formBase(S)",
+"lemmaID(S)",
+"usage(S)",
+"sentenceId(S)",
+"s_memo(S)",
+"origChar(S)",
+"pSampleID(S)",
+"pStart(S)",
+"orthBase(S)",
+"file(L)",
+"l_orthToken(L)",
+"l_pos(L)",
+"l_cType(L)",
+"l_cForm(L)",
+"l_reading(L)",
+"l_lemma(L)",
+"luw(L)",
+"memo(L)",
+"UpdUser(L)",
+"UpdDate(L)",
+"l_start(L)",
+"l_end(L)",
+"bunsetsu1(L)",
+"bunsetsu2(L)",
+"corpusName(L)",
+"diffSuw(L)",
+"l_lemmaNew(L)",
+"l_readingNew(L)",
+"l_orthBase(L)",
+"l_formBase(L)",
+"l_pronToken(L)",
+"l_wType(L)",
+"l_originalText(L)",
+"complex(L)",
+"l_meaning(L)",
+"l_kanaToken(L)",
+"l_formOrthBase(L)",
+"l_origChar(L)",
+"note(L)",
+"pSampleID(L)",
+"pStart(L)",
+"rn"
+]
+
+SUW_LIST = [
+    "file(S)",
+    "start(S)",
+    "end(S)",
+    "boundary(S)",
+    "orthToken(S)",
+    "reading(S)",
+    "lemma(S)",
+    "meaning(S)",
+    "pos(S)",
+    "cType(S)",
+    "cForm(S)",
+    "usage(S)",
+    "pronToken(S)",
+    "pronBase(S)",
+    "kana(S)",
+    "kanaBase(S)",
+    "form(S)",
+    "formBase(S)",
+    "formOrthBase(S)",
+    "formOrth(S)",
+    "orthBase(S)",
+    "wType(S)",
+    "charEncloserOpen(S)",
+    "charEncloserClose(S)",
+    "originalText(S)"
+]
 
 prv = 0
 
@@ -335,6 +434,73 @@ def convert(dencoder: str, encoder: str, file_path: Path):
             data = dec.decode(**js)
             out = enc.encode(**data)
             print(out)
+
+
+def jsonl_reader(inputfile: Path, batch: int):
+    buf = list()
+    with open(inputfile) as f:
+        for line in f:
+            js = json.loads(line)
+            buf.append(js)
+            if len(buf) == batch:
+                yield buf
+                buf.clear()
+        yield buf
+
+
+def field_loader(fname: Path, fields: List[str]):
+    with open(fname) as f:
+        reader = csv.reader(f, delimiter="\t")
+        for row in reader:
+            yield dict(zip(fields, row))
+
+
+def to_sentence(loader: List[dict]):
+    buf = list()
+    for d in loader:
+        print(d)
+        if d['boundary(S)'] == 'B' and len(buf) > 0:
+            yield buf
+            buf.clear()
+        buf.append(d)
+    yield buf
+
+
+def monaka_loader(loader: List[List[dict]]):
+    for d in loader:
+
+        res = {
+            "sentence": "".join([t["originalText(S)"] for t in d]),
+            "tokens": [t["originalText(S)"] for t in d],
+            "pos": [t["pos(S)"] for t in d],
+            "meta": d
+        }
+        yield res
+
+def bccwj_reader(inputfile: Path, batch: int, fields: List[str]):
+    buf = list()
+    for d in monaka_loader(to_sentence(field_loader(inputfile, fields))):
+        buf.append(d)
+        if len(buf) == batch:
+            yield buf
+            buf.clear()
+    yield buf
+
+
+@app.command()
+def predict_bccwj(inputfile: Path, outfile: str, model_dirs: List[str], device: str="cpu", batch: int=1, input_format: str="suw", output_format: str="bccwj"):
+    if input_format == "jsonl":
+        reader = jsonl_reader(inputfile, batch)
+    elif input_format == "suw":
+        reader = bccwj_reader(inputfile, batch, SUW_LIST)
+    else:
+        reader = bccwj_reader(inputfile, batch, BCPEXPORT_LIST)
+
+    prd = EnsemblePredictor(model_dirs, device=device)
+    with open(outfile, 'w') as f:
+        for b in reader:
+            for out in prd.predict_raw(b, output_format, batch):
+                print(out, file=f)
 
 
 if __name__ == "__main__":

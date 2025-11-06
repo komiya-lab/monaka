@@ -25,6 +25,9 @@ from monaka.metric import MetricReporter, SpanBasedMetricReporter
 BASE_DIR = os.path.abspath(os.path.dirname(__file__)) # monaka dir
 RESC_DIR = os.path.join(BASE_DIR, "resource") # monaka/resource dir
 
+
+
+
 class Decoder(Registrable):
 
     def __init__(self) -> None:
@@ -37,7 +40,7 @@ class Decoder(Registrable):
     def luw_pos(self, text: str, pos_level: int) -> str:
         pos: List = list()
         for token in text.split("_"):
-            pos.extend([t for t in token.split("-") if len(t) > 1])
+            pos.extend([t for t in token.split("-") if len(t) > 0])
         if pos_level is not None and pos_level > -1:
             return "-".join(pos[:pos_level])
         return "-".join(pos)
@@ -415,7 +418,87 @@ class LUWSplitter(Encoder):
             c_tokens.append(prv)
             
         return " ".join(c_tokens)
-    
+
+@Encoder.register("bccwj")
+class BCCWJComainu(Encoder):
+    FIELDS = [
+        "file(S)",
+        "start(S)",
+        "end(S)",
+        "boundary(S)",
+        "orthToken(S)",
+        "reading(S)",
+        "lemma(S)",
+        "meaning(S)",
+        "pos(S)",
+        "cType(S)",
+        "cForm(S)",
+        "usage(S)",
+        "pronToken(S)",
+        "pronBase(S)",
+        "kana(S)",
+        "kanaBase(S)",
+        "form(S)",
+        "formBase(S)",
+        "formOrthBase(S)",
+        "formOrth(S)",
+        "orthBase(S)",
+        "wType(S)",
+        "charEncloserOpen(S)",
+        "charEncloserClose(S)",
+        "originalText(S)",
+        "order",
+        "BOB",
+        "LUW",
+        "l_orthToken",
+        "l_reading",
+        "l_lemma",
+        "l_pos",
+        "l_cType",
+        "l_cForm",
+        "depend",
+        "MID",
+        "m"
+    ]
+
+    def encode(self, tokens: List[str], pos: List[str], chunk: List[str], **kwargs) -> Any:
+        if "luw" in kwargs:
+            lpos = kwargs["luw"]
+        else:
+            lpos = pos
+
+        meta = kwargs.get("meta")
+        outs = list()
+        start = -1
+        count = 0
+        for p, l, c, m in zip(pos, lpos, chunk, meta):
+            out = [m.get(name, "") for name in self.FIELDS]
+            out[self.FIELDS.index("BOB")] = c
+            if start < 0 or '*' not in l: #長単位先頭
+                out[self.FIELDS.index("LUW")] = 'B'
+                out[self.FIELDS.index("l_orthToken")] = m['orthToken(S)']
+                out[self.FIELDS.index("l_reading")] = m['reading(S)']
+                out[self.FIELDS.index("l_pos")] = l
+                out[self.FIELDS.index("l_cType")] = m['cType(S)']
+                out[self.FIELDS.index("l_cForm")] = m['cForm(S)']
+                start = count
+            else: #長単位途中
+                out[self.FIELDS.index("LUW")] = 'I'
+                outs[start][self.FIELDS.index("l_orthToken")] += m['orthToken(S)'] # 長単位先頭のトークンに追記
+                out[self.FIELDS.index("l_orthToken")] = "*"
+                outs[start][self.FIELDS.index("l_reading")] += m['reading(S)'] # 長単位先頭のトークンに追記
+                out[self.FIELDS.index("l_reading")] = "*"
+                out[self.FIELDS.index("l_pos")] = "*"
+                outs[start][self.FIELDS.index("l_cType")] = m['cType(S)'] # 長単位先頭のトークンを上書き
+                out[self.FIELDS.index("l_cType")] = "*"
+                outs[start][self.FIELDS.index("l_cForm")] = m['cForm(S)'] # 長単位先頭のトークンを上書き
+                out[self.FIELDS.index("l_cForm")] = "*"
+
+            outs.append(out)
+            count += 1
+        return "\n".join([','.join(o) for o in outs])
+
+
 @Encoder.register("mrp")
 class MRPformatter(Encoder):
 
@@ -687,6 +770,147 @@ class Predictor:
 
         if outputfile is not None:
             output.close()
+
+
+class EnsemblePredictor:
+
+    def __init__(self, model_dirs: List[str], device: str="cpu") -> None:
+        self.model_dirs = model_dirs
+        
+        with open(os.path.join(model_dirs[0], "config.json")) as f:
+            self.config = json.load(f)
+
+        self.config["dataeset_options"]["label_file"] = os.path.join(model_dirs[0], "labels.json")
+
+        posfile = os.path.join(model_dirs[0], "pos.json")
+        if os.path.exists(posfile):
+            self.config["dataeset_options"]["pos_file"] = posfile
+
+        self.models = list()
+        for model_dir in model_dirs:
+            model = LUWParserModel.by_name(self.config["model_name"]).from_config(self.config["model_config"], **self.config["dataeset_options"])
+            model.load_state_dict(torch.load(self.find_best_pt(model_dir)), strict=False)
+            model.eval()
+            self.models.append(model)
+
+        self.decoder = Decoder.by_name(self.config["model_config"]["decoder"])()
+
+        self.dataeset_options = self.config['dataeset_options']
+
+        with open(self.dataeset_options["label_file"]) as f:
+            self.label_dic = json.load(f)
+
+        self.inv_label_dic = {v:k for k, v in self.label_dic.items()}
+
+        init_device(device)
+        try:
+            device = int(device)
+        except:
+            pass
+        for model in self.models:
+            model.to(device)
+        self.device = device
+
+
+    @staticmethod
+    def find_best_pt(model_dir: str) -> str:
+        candidates = list()
+        longest = -1
+        idx = -1
+        for i, fname in enumerate(glob.glob(os.path.join(model_dir, "best_at_*.pt"))):
+            candidates.append(fname)
+            base = os.path.basename(fname)
+            epoch = base.split("_")[2]
+            epoch = int(epoch.split(".")[0])
+            if longest < epoch:
+                longest = epoch
+                idx = i
+
+        return candidates[idx]
+    
+    def extract_labels(self, word_ids, labels):
+        res = list()
+        if word_ids is None:
+            return [self.inv_label_dic.get(l, "新規未知語") for l in labels]
+        prv = -1
+        for wid, l in zip(word_ids, labels):
+            if wid is not None and wid >= 0:
+                if wid == prv:
+                    continue
+                res.append(self.inv_label_dic.get(l, "新規未知語"))
+                prv = wid
+        return res
+
+    def predict(self, input: List[str], suw_tokenizer: str, suw_tokenizer_option: dict, encoder_name: str, batch_size: int = 8, **kwargs):
+        encoder = Encoder.by_name(encoder_name)(**kwargs)
+        tokenizer = SUWTokenizer.by_name(suw_tokenizer)(**suw_tokenizer_option)
+
+        data = [tokenizer.tokenize(sent) for sent in input]
+
+        self.dataeset_options['store_all'] = True
+        dataset = LUWJsonLDataset(data, **self.dataeset_options)
+        dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=LUWJsonLDataset.collate_function)
+
+
+        for data in dataloader:
+            #word_ids = [sbw.word_ids() for sbw in data["subwords"]]
+            subwords = pad_sequence(data["input_ids"], batch_first=True, padding_value=dataset.pad_token_id).to(self.device)
+            word_ids = pad_sequence([torch.LongTensor(js.word_ids()) for js in data["subwords"]], batch_first=True, padding_value=-1).to(self.device)
+            pos_ids = pad_sequence(data["pos_ids"], batch_first=True, padding_value=1).to(self.device) if "pos_ids" in data else None
+            lemma_ids = pad_sequence(data["lemma_ids"], batch_first=True, padding_value=self.train_data.pad_token_id).to(self.device) if "lemma_ids" in data else None
+            lemma_word_ids = pad_sequence([torch.LongTensor(js.word_ids()) for js in data["lemma_subwords"]], batch_first=True, padding_value=-1).to(self.device) if "lemma_ids" in data else None
+
+            # average ensemble
+            out = 0.
+            for model in self.models:
+                out = out + model(subwords, word_ids, pos_ids)
+            pred = torch.argmax(out, dim=-1) # batch, len, 
+
+            pred_np = pred.detach().cpu().numpy()
+            for prd, wids, sentence, tokens, pos, feat, skip in zip(pred_np, word_ids, data["sentence"], data["tokens"], data["pos"], data["features"], data["skip"]):
+                if not skip:
+                    if not dataset.label_for_all_subwords:
+                        labels = self.extract_labels(None, prd)
+                    else:
+                        labels = self.extract_labels(wids, prd)
+                    res = self.decoder.decode(tokens, pos, labels)
+                else:
+                    res = self.decoder.decode(tokens, pos, ['BB*' for _ in tokens])
+                res["sentence"] = sentence
+                res["features"] = feat
+                yield encoder.encode(**res)
+
+    def predict_raw(self, input, encoder_name: str, batch_size: int = 8):
+        encoder = Encoder.by_name(encoder_name)()
+
+        dataset = LUWJsonLDataset(input, **self.dataeset_options)
+        dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=LUWJsonLDataset.collate_function)
+
+
+        for data in dataloader:
+            #word_ids = [sbw.word_ids() for sbw in data["subwords"]]
+            subwords = pad_sequence(data["input_ids"], batch_first=True, padding_value=dataset.pad_token_id).to(self.device)
+            word_ids = pad_sequence([torch.LongTensor(js.word_ids()) for js in data["subwords"]], batch_first=True, padding_value=-1).to(self.device)
+            pos_ids = pad_sequence(data["pos_ids"], batch_first=True, padding_value=1).to(self.device) if "pos_ids" in data else None
+
+            # average ensemble
+            out = 0.
+            for model in self.models:
+                out = out + model(subwords, word_ids, pos_ids)
+            pred = torch.argmax(out, dim=-1) # batch, len, 
+            pred = torch.argmax(out, dim=-1) # batch, len, 
+
+            pred_np = pred.detach().cpu().numpy()
+            for prd, wids, sentence, tokens, pos, meta in zip(pred_np, word_ids, data["sentence"], data["tokens"], data["pos"], data.get("meta", data["pos"])):
+                if not dataset.label_for_all_subwords:
+                    labels = self.extract_labels(None, prd)
+                else:
+                    labels = self.extract_labels(wids, prd)
+                res = self.decoder.decode(tokens, pos, labels)
+                res["sentence"] = sentence
+                res["meta"] = meta
+                yield encoder.encode(**res)
+
 
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, AutoConfig, Seq2SeqTrainer, Seq2SeqTrainingArguments
 from torch.utils.data import DataLoader
