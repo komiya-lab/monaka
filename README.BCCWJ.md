@@ -65,3 +65,9 @@ do
     python monaka/train_cli.py train --device 0 --vocab-dir ${inputdir}/vocab --train-files "${inputdir}/??/train.$i.jsonl" --dev-files "${inputdir}/??/dev.$i.jsonl" --test-files "${inputdir}/??/test.$i.jsonl" config/luw_chunk_bccwj.json exp/bccwj_01/cv_$i
 done
 ```
+
+## 推論の実施
+```bash
+python monaka/cli.py predict-bccwj [inputfile] [outputfile] [model_dirs ...]
+```
+複数のCVモデルをアンサンブルして推論結果を出力する
