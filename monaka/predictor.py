@@ -499,6 +499,118 @@ class BCCWJComainu(Encoder):
         return "\n".join(['\t'.join(o) for o in outs])
 
 
+@Encoder.register("bcpexport")
+class BCPExport(Encoder):
+    FIELDS = [
+        "corpusName(S)",
+        "file(S)",
+        "start(S)",
+        "end(S)",
+        "boundary(S)",
+        "orthToken(S)",
+        "pronToken(S)",
+        "reading(S)",
+        "lemma(S)",
+        "originalText(S)",
+        "pos(S)",
+        "sysCType(S)",
+        "cForm(S)",
+        "apply(S)",
+        "additionalInfo(S)",
+        "lid(S)",
+        "meaning(S)",
+        "UpdUser(S)",
+        "UpdDate(S)",
+        "order(S)",
+        "note(S)",
+        "open(S)",
+        "close(S)",
+        "wType(S)",
+        "fix(S)",
+        "variable(S)",
+        "formBase(S)",
+        "lemmaID(S)",
+        "usage(S)",
+        "sentenceId(S)",
+        "s_memo(S)",
+        "origChar(S)",
+        "pSampleID(S)",
+        "pStart(S)",
+        "orthBase(S)",
+        "file(L)",
+        "l_orthToken(L)",
+        "l_pos(L)",
+        "l_cType(L)",
+        "l_cForm(L)",
+        "l_reading(L)",
+        "l_lemma(L)",
+        "luw(L)",
+        "memo(L)",
+        "UpdUser(L)",
+        "UpdDate(L)",
+        "l_start(L)",
+        "l_end(L)",
+        "bunsetsu1(L)",
+        "bunsetsu2(L)",
+        "corpusName(L)",
+        "diffSuw(L)",
+        "l_lemmaNew(L)",
+        "l_readingNew(L)",
+        "l_orthBase(L)",
+        "l_formBase(L)",
+        "l_pronToken(L)",
+        "l_wType(L)",
+        "l_originalText(L)",
+        "complex(L)",
+        "l_meaning(L)",
+        "l_kanaToken(L)",
+        "l_formOrthBase(L)",
+        "l_origChar(L)",
+        "note(L)",
+        "pSampleID(L)",
+        "pStart(L)",
+        "rn"
+    ]
+
+    def encode(self, tokens: List[str], pos: List[str], chunk: List[str], **kwargs) -> Any:
+        if "luw" in kwargs:
+            lpos = kwargs["luw"]
+        else:
+            lpos = pos
+
+        meta = kwargs.get("meta")
+        outs = list()
+        start = -1
+        count = 0
+        for p, l, c, m in zip(pos, lpos, chunk, meta):
+            out = [m.get(name, "") for name in self.FIELDS]
+            out[self.FIELDS.index("bunsetsu1(L)")] = c
+            if start < 0 or '*' not in l: #長単位先頭
+                out[self.FIELDS.index("luw(L)")] = 'B'
+                out[self.FIELDS.index("l_orthToken(L)")] = m['orthToken(S)']
+                out[self.FIELDS.index("l_reading(L)")] = m['reading(S)']
+                out[self.FIELDS.index("l_pos(L)")] = l
+                out[self.FIELDS.index("l_cType(L)")] = m['sysCType(S)']
+                out[self.FIELDS.index("l_cForm(L)")] = m['cForm(S)']
+                start = count
+            else: #長単位途中
+                out[self.FIELDS.index("luw(L)")] = 'I'
+                outs[start][self.FIELDS.index("l_orthToken(L)")] += m['orthToken(S)'] # 長単位先頭のトークンに追記
+                out[self.FIELDS.index("l_orthToken(L)")] = "*"
+                outs[start][self.FIELDS.index("l_reading(L)")] += m['reading(S)'] # 長単位先頭のトークンに追記
+                out[self.FIELDS.index("l_reading(L)")] = "*"
+                out[self.FIELDS.index("l_pos(L)")] = "*"
+                outs[start][self.FIELDS.index("l_cType(L)")] = m['sysCType(S)'] # 長単位先頭のトークンを上書き
+                out[self.FIELDS.index("l_cType(L)")] = "*"
+                outs[start][self.FIELDS.index("l_cForm(L)")] = m['cForm(S)'] # 長単位先頭のトークンを上書き
+                out[self.FIELDS.index("l_cForm(L)")] = "*"
+
+            outs.append(out)
+            count += 1
+        return "\n".join(['\t'.join(o) for o in outs])
+
+    
+
 @Encoder.register("mrp")
 class MRPformatter(Encoder):
 
