@@ -499,8 +499,12 @@ def predict_bccwj(inputfile: Path, outfile: str, model_dirs: List[str], device: 
     prd = EnsemblePredictor(model_dirs, device=device)
     with open(outfile, 'w') as f:
         for b in reader:
-            for out in prd.predict_raw(b, output_format, batch):
-                print(out, file=f)
+            try:
+                for out in prd.predict_raw(b, output_format, batch):
+                    print(out, file=f)
+            except Exception as e:
+                print(e, file=sys.stderr)
+                print(f"error: {json.dumps(b, ensure_ascii=False)}")
 
 
 if __name__ == "__main__":
