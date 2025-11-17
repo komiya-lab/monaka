@@ -81,6 +81,30 @@ BCPEXPORT_LIST = [
 def test():
     print("test")
 
+
+@app.command()
+def diff(gold: str, pred: str):
+    with open(gold) as f1:
+        with open(pred) as f2:
+            grd = csv.reader(f1, delimiter="\t")
+            prd = csv.reader(f2, delimiter="\t")
+            i = 0
+            for rp in prd:
+                p_text = "_".join(rp[:5])
+                rg = next(grd)
+                i += 1
+                g_text = "_".join(rg[:5])
+                if p_text == g_text:
+                    continue
+                while p_text != g_text:
+                    print(f"line: {i} {g_text} {p_text}")
+                    i+=1
+                    rg = next(grd)
+                    g_text = "_".join(rg[:5])
+                    
+
+
+
 @app.command()
 def export_tsv(base: str, target: str):
     based = dict()

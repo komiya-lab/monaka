@@ -21,6 +21,7 @@ from torch.nn.utils.rnn import pad_sequence
 from monaka.model import LUWParserModel, init_device, is_master
 from monaka.dataset import LUWJsonLDataset, LemmaJsonDataset
 from monaka.metric import MetricReporter, SpanBasedMetricReporter
+from monaka.mylogging import logger
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__)) # monaka dir
 RESC_DIR = os.path.join(BASE_DIR, "resource") # monaka/resource dir
@@ -908,6 +909,7 @@ class EnsemblePredictor:
         self.decoder = Decoder.by_name(self.config["model_config"]["decoder"])()
 
         self.dataeset_options = self.config['dataeset_options']
+        self.dataeset_options["fold_sentence"] = True
 
         with open(self.dataeset_options["label_file"]) as f:
             self.label_dic = json.load(f)
@@ -943,13 +945,13 @@ class EnsemblePredictor:
     def extract_labels(self, word_ids, labels):
         res = list()
         if word_ids is None:
-            return [self.inv_label_dic.get(l, "新規未知語") for l in labels]
+            return [self.inv_label_dic.get(l, "unk") for l in labels]
         prv = -1
         for wid, l in zip(word_ids, labels):
             if wid is not None and wid >= 0:
                 if wid == prv:
                     continue
-                res.append(self.inv_label_dic.get(l, "新規未知語"))
+                res.append(self.inv_label_dic.get(l, "unk"))
                 prv = wid
         return res
 
@@ -996,7 +998,7 @@ class EnsemblePredictor:
         encoder = Encoder.by_name(encoder_name)()
 
         dataset = LUWJsonLDataset(input, **self.dataeset_options)
-        dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=LUWJsonLDataset.collate_function)
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=LUWJsonLDataset.collate_function)
 
 
         for data in dataloader:
@@ -1013,15 +1015,36 @@ class EnsemblePredictor:
             pred = torch.argmax(out, dim=-1) # batch, len, 
 
             pred_np = pred.detach().cpu().numpy()
-            for prd, wids, sentence, tokens, pos, meta in zip(pred_np, word_ids, data["sentence"], data["tokens"], data["pos"], data.get("meta", data["pos"])):
+            prv_tokens = None
+            prv_pos = None
+            prv_labels = None
+            for prd, wids, sentence, tokens, pos, meta, fold in zip(pred_np, word_ids, data["sentence"], data["tokens"], data["pos"], data.get("meta", data["pos"]), data["fold"]):
                 if not dataset.label_for_all_subwords:
                     labels = self.extract_labels(None, prd)
                 else:
                     labels = self.extract_labels(wids, prd)
-                res = self.decoder.decode(tokens, pos, labels)
-                res["sentence"] = sentence
-                res["meta"] = meta
-                yield encoder.encode(**res)
+                if fold < 0:
+                    res = self.decoder.decode(tokens, pos, labels)
+                    res["sentence"] = sentence
+                    res["meta"] = meta
+                    out = encoder.encode(**res)
+                    yield out
+                elif fold == 0:
+                    logger.warning(f"fold: 0 {''.join(tokens)}")
+                    prv_tokens = tokens
+                    prv_pos = pos
+                    prv_labels = labels
+                else: #fold == 1
+                    logger.warning(f"fold: 1 {''.join(tokens)}")
+                    prv_tokens.extend(tokens)
+                    prv_pos.extend(pos)
+                    prv_labels.extend(labels)
+                    logger.warning(f"unfolding {''.join(prv_tokens)}")
+                    res = self.decoder.decode(prv_tokens, prv_pos, prv_labels)
+                    res["sentence"] = sentence
+                    res["meta"] = meta
+                    out = encoder.encode(**res)
+                    yield out
 
 
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, AutoConfig, Seq2SeqTrainer, Seq2SeqTrainingArguments

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import copy
 import json
 from pathlib import Path
 from collections import namedtuple
@@ -53,7 +54,7 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
     """
 
     def __init__(self, jsonlfiles: Union[str, List[str]], label_file: str, pos_file: str, lm_tokenizer: str, lm_tokenizer_config: Dict, max_length: int=1024, pos_as_tokens: bool=False, 
-                 label_for_all_subwords: bool=False, logger=logger, store_all: bool=False, 
+                 label_for_all_subwords: bool=False, logger=logger, store_all: bool=False, fold_sentence:bool=False,
                  **kwargs):
         self.sentences = list()
         self.tokenizer = Tokenizer.by_name(lm_tokenizer)(**lm_tokenizer_config)
@@ -64,6 +65,8 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
         self.jsonlfiles = jsonlfiles
         self.logger = logger
         self.store_all = store_all
+        self.fold_sentence = fold_sentence
+        self.logger.warning(f"fold sentence {fold_sentence}")
 
         with open(label_file) as f:
             self.label_dic = json.load(f)
@@ -83,9 +86,10 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
                     self.logger.info(f"loading {fname}")
                     self.load(fname)
                 elif isinstance(fname, dict):
+                    #self.logger.warning(fname)
                     self.load_dict(fname)
         
-        self.logger.info(f"total {len(self.sentences)} sentences loaded.")
+        self.logger.warning(f"total {len(self.sentences)} sentences loaded.")
         super().__init__()
 
     @staticmethod
@@ -108,20 +112,57 @@ class LUWJsonLDataset(torch.utils.data.Dataset):
 
     def load_dict(self, js: dict):
         js['skip'] = False
+        prv_fold = False
+        if "fold" not in js:
+            js["fold"] = -1
+        else:
+            prv_fold = True
+
         if len(js["pos"]) != len(js["tokens"]):
-            self.logger.warn(f'skip loading {js["sentence"]} because of pos {len(js["pos"])} and token {len(js["tokens"])} length unmatch')
+            self.logger.warning(f'skip loading {js["sentence"]} because of pos {len(js["pos"])} and token {len(js["tokens"])} length unmatch')
             if self.store_all:
                 js['skip'] = True
                 self.sentences.append(js)
             return
         if len(js["pos"]) == 0:
-            self.logger.warn(f'skip loading {js["sentence"]} because there is no token.')
+            self.logger.warning(f'skip loading {js["sentence"]} because there is no token.')
             if self.store_all:
                 js['skip'] = True
                 self.sentences.append(js)
             return
 
         js["subwords"] = self.to_token_ids(js["tokens"], js["pos"] if self.pos_as_tokens else None)
+        if len(js["pos"]) > np.max(js["subwords"].word_ids()) + 1 and  len(js["subwords"]["input_ids"]) >= self.max_length and self.fold_sentence: # folding too long sentence
+            self.logger.warning(f"folding {len(js['pos'])} , {js['sentence']}")
+
+            if prv_fold:
+                logger.error("dual fold")
+                
+            indices = np.where(np.char.find(js["pos"], "補助記号-読点") > -1)[0]
+            if len(indices) == 0:
+                indices = np.where(np.char.find(js["pos"], "補助記号-一般") > -1)[0]
+            if len(indices) > 0:
+                i = indices[int(np.floor(len(indices) / 2))]
+                js1 = copy.deepcopy(js)
+                js1["tokens"] = js["tokens"][:i+1]
+                js1["pos"] = js["pos"][:i+1]
+                if "lemma" in js:
+                    js1["lemma"] = js["lemma"][:i+1]
+
+                js1["fold"] = 0
+                self.load_dict(js1)
+
+
+                js2 = copy.deepcopy(js)
+                js2["tokens"] = js["tokens"][i+1:]
+                js2["pos"] = js["pos"][i+1:]
+                if "lemma" in js:
+                    js2["lemma"] = js["lemma"][i+1:]
+
+                js2["fold"] = 1
+                self.load_dict(js2)
+                return
+
         js["input_ids"] = torch.LongTensor(js["subwords"]["input_ids"])
         js["label_ids"] = self.to_label_ids(js["labels"], js["subwords"].word_ids() if self.label_for_all_subwords else None) if "labels" in js else None
 

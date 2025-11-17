@@ -1,10 +1,13 @@
 import os
 
+import gc
 import csv
 import sys
+import copy
 import urllib.parse
 import typer
 import json
+import torch
 import enum
 import urllib
 import requests
@@ -458,7 +461,7 @@ def field_loader(fname: Path, fields: List[str]):
 def to_sentence(loader: List[dict]):
     buf = list()
     for d in loader:
-        print(d)
+        #print(d)
         if d['boundary(S)'] == 'B' and len(buf) > 0:
             yield buf
             buf.clear()
@@ -473,7 +476,7 @@ def monaka_loader(loader: List[List[dict]]):
             "sentence": "".join([t["originalText(S)"] for t in d]),
             "tokens": [t["originalText(S)"] for t in d],
             "pos": [t["pos(S)"] for t in d],
-            "meta": d
+            "meta": copy.deepcopy(d)
         }
         yield res
 
@@ -488,24 +491,40 @@ def bccwj_reader(inputfile: Path, batch: int, fields: List[str]):
 
 
 @app.command()
-def predict_bccwj(inputfile: Path, outfile: str, model_dirs: List[str], device: str="cpu", batch: int=1, input_format: str="suw", output_format: str="bccwj"):
+def predict_bccwj(inputfile: Path, outfile: str, model_dirs: List[str], device: str="cpu", batch: int=1, buffer: int=10000, input_format: str="suw", output_format: str="bccwj"):
+    if input_format == "jsonl":
+        reader = jsonl_reader(inputfile, buffer)
+    elif input_format == "suw":
+        reader = bccwj_reader(inputfile, buffer, SUW_LIST)
+    else:
+        reader = bccwj_reader(inputfile, buffer, BCPEXPORT_LIST)
+
+    
+    with open(outfile, 'w') as f:
+        for b in reader:
+            prd = EnsemblePredictor(model_dirs, device=device)
+            try:
+                for out in prd.predict_raw(b, output_format, batch):
+                    print(out, file=f)
+            except Exception as e:
+                print(e, file=sys.stderr)
+                print(f"error: {json.dumps(b, ensure_ascii=False)}", file=f)
+            del prd
+            gc.collect()
+            torch.cuda.empty_cache()
+
+@app.command()
+def test_loader(inputfile: Path, batch: int=1, input_format: str="suw", output_format: str="bccwj"):
     if input_format == "jsonl":
         reader = jsonl_reader(inputfile, batch)
     elif input_format == "suw":
         reader = bccwj_reader(inputfile, batch, SUW_LIST)
     else:
         reader = bccwj_reader(inputfile, batch, BCPEXPORT_LIST)
-
-    prd = EnsemblePredictor(model_dirs, device=device)
-    with open(outfile, 'w') as f:
-        for b in reader:
-            try:
-                for out in prd.predict_raw(b, output_format, batch):
-                    print(out, file=f)
-            except Exception as e:
-                print(e, file=sys.stderr)
-                print(f"error: {json.dumps(b, ensure_ascii=False)}")
-
+    
+    for b in reader:
+        print(json.dumps(b, ensure_ascii=False))
+        break
 
 if __name__ == "__main__":
     app()
