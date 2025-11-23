@@ -71,3 +71,71 @@ done
 python monaka/cli.py predict-bccwj [inputfile] [outputfile] [model_dirs ...]
 ```
 複数のCVモデルをアンサンブルして推論結果を出力する
+
+
+## 評価の実施
+```bash
+python scripts/evaluate.sh {学習に使ったフォルダ} {結果の出力先フォルダ}
+```
+「結果の出力先フォルダ」に、推論済みの結果とそれに基づく評価結果を出力する。
+例: pred.OC_0.eval.txt
+```
+bunsetsu1(L) count: 10775 correct: 10653 acc: 0.988677494199536
+luw(L) count: 10775 correct: 10670 acc: 0.9902552204176334
+l_orthToken(L) count: 10775 correct: 10605 acc: 0.9842227378190255
+l_reading(L) count: 10775 correct: 10381 acc: 0.9634338747099768
+l_pos(L) count: 10775 correct: 10588 acc: 0.9826450116009281
+l_cType(L) count: 10775 correct: 10699 acc: 0.9929466357308585
+l_cForm(L) count: 10775 correct: 10697 acc: 0.9927610208816705
+```
+上記は、長単位の推定項目ごとに短単位を1レコードとしての評価結果を提示している。
+
+## 学習のためのTIPS
+### Tokenizerの設定
+MeCab/fugashiを使うBERTモデル(tohoku-nlpの各種BERTモデルなど)を学習に用いた際は、データセット読み込み時のトークナイザを以下のように設定します。
+
+#### IPAdicを使っているモデル (tohoku-nlp/bert-base-japanese-whole-word-masking など)
+```json
+{
+    "dataeset_options" :{
+        "label_file": "",
+        "pos_file": "",
+        "lm_tokenizer": "bert-tohoku-ja",
+        "lm_tokenizer_config": {},
+        "pos_as_tokens": false,
+        "label_for_all_subwords": false,
+        "max_length": {モデルのMAX Token Lengthで書き換え}
+    }
+}
+```
+
+#### UniDic liteを使っているモデル (tohoku-nlp/bert-base-japanese-v2など)
+```json
+{
+    "dataeset_options" :{
+        "label_file": "",
+        "pos_file": "",
+        "lm_tokenizer": "bert-tohoku-ja-unidic",
+        "lm_tokenizer_config": {},
+        "pos_as_tokens": false,
+        "label_for_all_subwords": false,
+        "max_length": {モデルのMAX Token Lengthで書き換え}
+    }
+}
+```
+
+
+#### その他の言語モデル
+```json
+{
+    "dataeset_options" :{
+        "label_file": "",
+        "pos_file": "",
+        "lm_tokenizer": "auto",
+        "lm_tokenizer_config": {},
+        "pos_as_tokens": false,
+        "label_for_all_subwords": false,
+        "max_length": {モデルのMAX Token Lengthで書き換え}
+    }
+}
+```
