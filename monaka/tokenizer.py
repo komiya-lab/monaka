@@ -68,5 +68,22 @@ try:
             lm_tokenizer = BertMecabTokenizerFast.from_pretrained("cl-tohoku/bert-base-japanese-whole-word-masking")
             super().__init__(lm_tokenizer)
 
+
+    class BertMecabTokenizerUnidicFast(BertTokenizerFast):
+
+        def __init__(self, vocab_file, do_lower_case=False, tokenize_chinese_chars=False, clean_up_tokenization_spaces=False, **kwargs):
+            from tokenizers.pre_tokenizers import PreTokenizer,BertPreTokenizer,Sequence
+            super().__init__(vocab_file=vocab_file,do_lower_case=do_lower_case,tokenize_chinese_chars=tokenize_chinese_chars,clean_up_tokenization_spaces=clean_up_tokenization_spaces, **kwargs)
+            d=kwargs["mecab_kwargs"] if "mecab_kwargs" in kwargs else {"mecab_dic":"unidic"}
+            self._tokenizer.pre_tokenizer=Sequence([PreTokenizer.custom(MecabPreTokenizer(**d)),BertPreTokenizer()])
+
+
+    @Tokenizer.register("bert-tohoku-ja-unidic")
+    class BertMecabLMTokenizer(Tokenizer):
+
+        def __init__(self, **kwargs) -> None:
+            lm_tokenizer = BertMecabTokenizerUnidicFast.from_pretrained("tohoku-nlp/bert-large-japanese-v2")
+            super().__init__(lm_tokenizer)
+
 except:
     pass
