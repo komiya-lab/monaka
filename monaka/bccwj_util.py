@@ -124,13 +124,15 @@ def export_tsv(base: str, target: str):
                 print("\t".join(out[k] for k in BCPEXPORT_LIST))
 
 @app.command()
-def evaluate(gold: str, pred: str, fields: List[str]=["bunsetsu1(L)", "luw(L)", "l_orthToken(L)", "l_reading(L)", "l_pos(L)", "l_cType(L)", "l_cForm(L)"]):
+def evaluate(gold: str, pred: str, corrects :List[str]=["luw(L)"], errors :List[str]=["l_orthToken(L)"], fields: List[str]=["bunsetsu1(L)", "luw(L)", "l_orthToken(L)", "l_reading(L)", "l_pos(L)", "l_cType(L)", "l_cForm(L)"]):
     output = dict()
     with open(gold) as f1:
         grd = csv.reader(f1, delimiter="\t")
         with open(pred) as f2:
             prd = csv.reader(f2, delimiter="\t")
             for rg, rp in zip(grd, prd):
+                crrct = False
+                error = False
                 for field in fields:
                     i = BCPEXPORT_LIST.index(field)
                     d = output.get(field, {"a":0 , "c": 0})
@@ -138,16 +140,37 @@ def evaluate(gold: str, pred: str, fields: List[str]=["bunsetsu1(L)", "luw(L)", 
                     if field in ["bunsetsu1(L)", "luw(L)"]:
                         if 'B' in rg[i]:
                             if 'B' in rp[i]:
+                                if field in corrects:
+                                    crrct = True
                                 d["c"] += 1
+                            else:
+                                if field in errors:
+                                    error = True
                         else:
                             if 'B' not in rp[i]:
+                                if field in corrects:
+                                    crrct = True
                                 d["c"] += 1
+                            else:
+                                if field in errors:
+                                    error = True
 
                     elif rg[i] == rp[i]:
                         d["c"] += 1
+                        if field in corrects:
+                            crrct = True
                     elif len(rg[i]) == 0 and rp[i] == '*':
                         d["c"] += 1
+                        if field in corrects:
+                            crrct = True
+                    else:
+                        if field in errors:
+                            error = True
+
                     output[field] = d
+                if crrct and error:
+                    print("gold:", "\t".join([rg[BCPEXPORT_LIST.index(name)] for name in corrects + errors ]))
+                    print("pred:", "\t".join([rp[BCPEXPORT_LIST.index(name)] for name in corrects + errors ]))
     
     for field, d in output.items():
         print(f"{field} count: {d['a']} correct: {d['c']} acc: {d['c']/d['a']}")

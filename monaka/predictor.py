@@ -65,7 +65,7 @@ class LUWChunkDecoder(Decoder):
     def decode(self, tokens: List[str], pos: List[str], labels: List[str], pos_level:int = -1, **kwargs) -> Dict:
         """
         labelsが以下の形式の場合に利用する
-        (B or I)(B or I)(LUW品詞)_(LUW活用型)_(LUW活用形)
+        (B or I)(B or I)(LUW品詞)
         """
         luw = list()
         chunk = list()
@@ -79,6 +79,8 @@ class LUWChunkDecoder(Decoder):
                     luw.append(self.luw_pos(l[2:], pos_level))
                 else:
                     luw.append("*")
+        if len(chunk) > 0: # 銭湯は必ずB
+            chunk[0] = 'B'
         res = {
             "tokens": tokens,
             "pos": pos,
@@ -887,7 +889,7 @@ class Predictor:
 
 class EnsemblePredictor:
 
-    def __init__(self, model_dirs: List[str], device: str="cpu") -> None:
+    def __init__(self, model_dirs: List[str], device: str="cpu", mask: Optional[str]=None) -> None:
         self.model_dirs = model_dirs
         
         with open(os.path.join(model_dirs[0], "config.json")) as f:
@@ -924,6 +926,16 @@ class EnsemblePredictor:
         for model in self.models:
             model.to(device)
         self.device = device
+
+        if mask is not None:
+            try:
+                with open(mask) as f:
+                    self.mask = json.load(f)
+                with open(posfile) as f:
+                    self.pos_dic = json.load(f)
+                    self.inv_pos = {v:k for k, v in self.pos_dic.items()}
+            except:
+                pass
 
 
     @staticmethod
@@ -994,6 +1006,48 @@ class EnsemblePredictor:
                 res["features"] = feat
                 yield encoder.encode(**res)
 
+    def apply_single_suw_rule(self, decoder_out, top):
+        singles = list(range(len(decoder_out["luw"])))
+        for i, l in enumerate(decoder_out["luw"]):
+            if '*' in l:
+                singles[i] = -1
+                if i > 0:
+                    singles[i-1] = -1
+
+        for s, pos, luw, t in zip(singles, decoder_out['pos'], decoder_out['luw'], top):
+            if s < 0:
+                continue
+            if '可能' not in pos:
+                decoder_out['luw'][s] = pos
+            elif '名詞-普通名詞-助数詞可能' in pos:
+                decoder_out['luw'][s] = '名詞-普通名詞-一般'
+            elif '動詞-非自立可能' in pos:
+                decoder_out['luw'][s] = '動詞-一般'
+            elif '形容詞-非自立可能' in pos:
+                decoder_out['luw'][s] = '形容詞-一般'
+            elif '名詞-普通名詞-サ変可能' in pos:
+                decoder_out['luw'][s] = '名詞-普通名詞-一般'
+            elif '名詞-普通名詞-形状詞可能' in pos or '名詞-普通名詞-サ変形状詞可能' in pos:
+                for i in t:
+                    label = self.inv_label_dic[i]
+                    if '形状詞-一般' in label:
+                        decoder_out['luw'][s] = '形状詞-一般'
+                        break
+                    elif '名詞-普通名詞-一般' in label:
+                        decoder_out['luw'][s] = '名詞-普通名詞-一般'
+                        break
+            elif '名詞-普通名詞-副詞可能' in pos :
+                for i in t:
+                    label = self.inv_label_dic[i]
+                    if '副詞' in label:
+                        decoder_out['luw'][s] = '副詞'
+                        break
+                    elif '名詞-普通名詞-一般' in label:
+                        decoder_out['luw'][s] = '名詞-普通名詞-一般'
+                        break
+        return decoder_out
+        
+
     def predict_raw(self, input, encoder_name: str, batch_size: int = 8):
         encoder = Encoder.by_name(encoder_name)()
 
@@ -1011,20 +1065,23 @@ class EnsemblePredictor:
             out = 0.
             for model in self.models:
                 out = out + model(subwords, word_ids, pos_ids)
+
             pred = torch.argmax(out, dim=-1) # batch, len, 
-            pred = torch.argmax(out, dim=-1) # batch, len, 
+            tops = torch.topk(out, len(self.label_dic), dim=-1)
 
             pred_np = pred.detach().cpu().numpy()
+            tops_np = tops.indices.detach().cpu().numpy()
             prv_tokens = None
             prv_pos = None
             prv_labels = None
-            for prd, wids, sentence, tokens, pos, meta, fold in zip(pred_np, word_ids, data["sentence"], data["tokens"], data["pos"], data.get("meta", data["pos"]), data["fold"]):
+            for prd, wids, sentence, tokens, pos, meta, fold, top in zip(pred_np, word_ids, data["sentence"], data["tokens"], data["pos"], data.get("meta", data["pos"]), data["fold"], tops_np):
                 if not dataset.label_for_all_subwords:
                     labels = self.extract_labels(None, prd)
                 else:
                     labels = self.extract_labels(wids, prd)
                 if fold < 0:
                     res = self.decoder.decode(tokens, pos, labels)
+                    res = self.apply_single_suw_rule(res, top)
                     res["sentence"] = sentence
                     res["meta"] = meta
                     out = encoder.encode(**res)
@@ -1041,6 +1098,7 @@ class EnsemblePredictor:
                     prv_labels.extend(labels)
                     logger.warning(f"unfolding {''.join(prv_tokens)}")
                     res = self.decoder.decode(prv_tokens, prv_pos, prv_labels)
+                    res = self.apply_single_suw_rule(res, top)
                     res["sentence"] = sentence
                     res["meta"] = meta
                     out = encoder.encode(**res)

@@ -508,7 +508,13 @@ def predict_bccwj(inputfile: Path, outfile: str, model_dirs: List[str], device: 
                     print(out, file=f)
             except Exception as e:
                 print(e, file=sys.stderr)
-                print(f"error: {json.dumps(b, ensure_ascii=False)}", file=f)
+                del prd
+                gc.collect()
+                torch.cuda.empty_cache()
+                prd = EnsemblePredictor(model_dirs, device=device)
+                out = prd.predict_raw(b, output_format, int(batch/2))
+                print(out, file=f)
+                
             del prd
             gc.collect()
             torch.cuda.empty_cache()
