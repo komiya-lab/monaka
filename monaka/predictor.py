@@ -575,6 +575,16 @@ class BCPExport(Encoder):
         "rn"
     ]
 
+    @classmethod
+    def is_yougen(pos: str) -> bool:
+        if '動詞' in pos: #動詞 助動詞
+            return True
+        if '形容詞' in pos:
+            return True
+        if '形状詞' in pos:
+            return True
+        return False
+
     def encode(self, tokens: List[str], pos: List[str], chunk: List[str], **kwargs) -> Any:
         if "luw" in kwargs:
             lpos = kwargs["luw"]
@@ -585,6 +595,7 @@ class BCPExport(Encoder):
         outs = list()
         start = -1
         count = 0
+        pos = None
         for p, l, c, m in zip(pos, lpos, chunk, meta):
             out = [m.get(name, "") for name in self.FIELDS]
             out[self.FIELDS.index("bunsetsu1(L)")] = c
@@ -593,8 +604,15 @@ class BCPExport(Encoder):
                 out[self.FIELDS.index("l_orthToken(L)")] = m['orthToken(S)']
                 out[self.FIELDS.index("l_reading(L)")] = m['reading(S)']
                 out[self.FIELDS.index("l_pos(L)")] = l
-                out[self.FIELDS.index("l_cType(L)")] = m['sysCType(S)']
-                out[self.FIELDS.index("l_cForm(L)")] = m['cForm(S)']
+                pos = l
+                # 用言のみ活用情報を追記
+                if self.is_yougen(pos):
+                    out[self.FIELDS.index("l_cType(L)")] = m['sysCType(S)']
+                    out[self.FIELDS.index("l_cForm(L)")] = m['cForm(S)']
+                else:
+                    out[self.FIELDS.index("l_cType(L)")] = "*"
+                    out[self.FIELDS.index("l_cForm(L)")] = "*"
+
                 start = count
             else: #長単位途中
                 out[self.FIELDS.index("luw(L)")] = 'I'
@@ -603,9 +621,11 @@ class BCPExport(Encoder):
                 outs[start][self.FIELDS.index("l_reading(L)")] += m['reading(S)'] # 長単位先頭のトークンに追記
                 out[self.FIELDS.index("l_reading(L)")] = "*"
                 out[self.FIELDS.index("l_pos(L)")] = "*"
-                outs[start][self.FIELDS.index("l_cType(L)")] = m['sysCType(S)'] # 長単位先頭のトークンを上書き
+                # 用言のみ活用情報を追記
+                if self.is_yougen(pos):
+                    outs[start][self.FIELDS.index("l_cType(L)")] = m['sysCType(S)'] # 長単位先頭のトークンを上書き
+                    outs[start][self.FIELDS.index("l_cForm(L)")] = m['cForm(S)'] # 長単位先頭のトークンを上書き
                 out[self.FIELDS.index("l_cType(L)")] = "*"
-                outs[start][self.FIELDS.index("l_cForm(L)")] = m['cForm(S)'] # 長単位先頭のトークンを上書き
                 out[self.FIELDS.index("l_cForm(L)")] = "*"
 
             outs.append(out)

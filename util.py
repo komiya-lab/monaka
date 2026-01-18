@@ -7,9 +7,102 @@ import enum
 import numpy as np
 
 from typing import List, Optional
+from conllu import parse_incr
 
 
 app = typer.Typer()
+
+def load_conllu(fname: str):
+    with open(fname) as f:
+        head = [
+        "corpusName(S)",
+        "file(S)",
+        "start(S)",
+        "end(S)",
+        "boundary(S)",
+        "orthToken(S)",
+        "pronToken(S)",
+        "reading(S)",
+        "lemma(S)",
+        "originalText(S)",
+        "pos(S)",
+        "sysCType(S)",
+        "cForm(S)",
+        "apply(S)",
+        "additionalInfo(S)",
+        "lid(S)",
+        "meaning(S)",
+        "UpdUser(S)",
+        "UpdDate(S)",
+        "order(S)",
+        "note(S)",
+        "open(S)",
+        "close(S)",
+        "wType(S)",
+        "fix(S)",
+        "variable(S)",
+        "formBase(S)",
+        "lemmaID(S)",
+        "usage(S)",
+        "sentenceId(S)",
+        "s_memo(S)",
+        "origChar(S)",
+        "pSampleID(S)",
+        "pStart(S)",
+        "orthBase(S)",
+        "file(L)",
+        "l_orthToken(L)",
+        "l_pos(L)",
+        "l_cType(L)",
+        "l_cForm(L)",
+        "l_reading(L)",
+        "l_lemma(L)",
+        "luw(L)",
+        "memo(L)",
+        "UpdUser(L)",
+        "UpdDate(L)",
+        "l_start(L)",
+        "l_end(L)",
+        "bunsetsu1(L)",
+        "bunsetsu2(L)",
+        "corpusName(L)",
+        "diffSuw(L)",
+        "l_lemmaNew(L)",
+        "l_readingNew(L)",
+        "l_orthBase(L)",
+        "l_formBase(L)",
+        "l_pronToken(L)",
+        "l_wType(L)",
+        "l_originalText(L)",
+        "complex(L)",
+        "l_meaning(L)",
+        "l_kanaToken(L)",
+        "l_formOrthBase(L)",
+        "l_origChar(L)",
+        "note(L)",
+        "pSampleID(L)",
+        "pStart(L)",
+        "rn"
+        ]
+        for sent in parse_incr(f):
+            
+            bnd = 'B'
+            for token in sent:
+                if 'LUWBILabel' not in token['misc']:
+                    continue
+
+                js = {k: "" for k in head}
+                js['boundary(S)'] = bnd
+                bnd = ''
+                js['lemma(S)'] = token['lemma']
+                js['pos(S)'] = token['xpos']
+                js['bunsetsu1(L)'] = token['misc']['BunsetuBILabel']
+                js['orthToken(S)'] = token['form']
+                js['originalText(S)'] = token['form']
+                js['luw(L)'] = token['misc']['LUWBILabel']
+                js['l_pos(L)'] = token['misc']['LUWPOS']
+                yield js
+
 
 def load_chj(fname: str, luw: bool):
     if luw:
@@ -274,6 +367,11 @@ def chj2jsonl(fname: str, luw: bool=True):
     for d in to_sentences(load_chj(fname, luw), luw):
         print(json.dumps(d, ensure_ascii=False))
 
+
+@app.command()
+def conllu2jsonl(fname: str, luw: bool=True):
+    for d in to_sentences(load_conllu(fname), luw):
+        print(json.dumps(d, ensure_ascii=False))
 
 @app.command()
 def chjstats(jsonlname: str, key: str="サブコーパス名"):

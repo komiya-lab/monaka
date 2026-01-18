@@ -6,7 +6,7 @@ fugashi[unidic]
 ipadic
 tqdm
 registrable
-transformers==4.35.0
+transformers
 tensorboard
 #setencepiece==0.2.0
 accelerate
