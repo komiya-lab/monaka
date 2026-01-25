@@ -1,0 +1,45 @@
+{
+ "train_files": [
+  "../data/proc/ud_modern/train.jsonl"
+ ],
+ "dev_files": [
+  "../data/proc/ud_modern/dev.jsonl"
+ ],
+ "test_files": [
+  "../data/proc/ud_modern/test.jsonl"
+ ],
+ "dataeset_options": {
+  "label_file": "../data/proc/ud_modern/vocab/labels.json",
+  "pos_file": "../data/proc/ud_modern/vocab/pos.json",
+  "lm_tokenizer": "auto",
+  "lm_tokenizer_config": {
+   "name": "nlp-waseda/bigbird-base-japanese"
+  },
+  "pos_as_tokens": false,
+  "label_for_all_subwords": false,
+  "max_length": 4096
+ },
+ "model_name": "WordTagging",
+ "model_config": {
+  "n_pos_emb": 256,
+  "pooling": "sum",
+  "pos_dropout": 0.5,
+  "mlp_dropout": 0.5,
+  "lm_class_name": "AutoLM",
+  "lm_class_config": {
+   "model": "nlp-waseda/bigbird-base-japanese",
+   "requires_grad": true,
+   "use_scalar_mix": false,
+   "sclar_mix_dropout": 0.5,
+   "use_attentions": false
+  },
+  "pos_padding_idx": 1,
+  "decoder": "LUW-Bunsetsu"
+ },
+ "batch_size": 16,
+ "epochs": 20,
+ "lr": 5e-06,
+ "decay": 0.75,
+ "decay_steps": 5000,
+ "evaluate_step": 500
+}
