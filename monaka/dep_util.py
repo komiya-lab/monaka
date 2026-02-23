@@ -394,10 +394,12 @@ def to_cabocha(datajsonl, unidiccsv: str):
             unid[surface] = d
 
     with open(datajsonl) as f:
-        for line in f:
+        for i, line in enumerate(f):
             js = json.loads(line)
             pbid = -1
             lines = list()
+            lines.append(f'#! DOC {i}')
+            lines.append(f'#! DOCATTR	<ID>{i}</ID><sent_id># sent_id = {js["sent_id"]}</sent_id>')
             for token, pos, bid in zip(js['tokens'], js['pos'], js['bid']):
                 if bid != pbid:
                     pbid = bid
@@ -417,10 +419,381 @@ def to_cabocha(datajsonl, unidiccsv: str):
                 lines.append(f"{token.strip()}\t{feat}")
             lines.append('EOS')
             print('\n'.join(lines))
+
+@app.command()
+def to_cabocha2(datajsonl):
+
+    with open(datajsonl) as f:
+        for i, line in enumerate(f):
+            js = json.loads(line)
+            pbid = -1
+            lines = list()
+            lines.append(f'#! DOC {i}')
+            lines.append(f'#! DOCATTR	<ID>{i}</ID><sent_id># sent_id = {js["sent_id"]}</sent_id>')
+            for token, pos, bid in zip(js['tokens'], js['pos'], js['bid']):
+                if bid != pbid:
+                    pbid = bid
+                    dep = js['dependency'][bid]
+                    d = dep["head"]
+                    if d == bid:
+                        d = -1
+                    lines.append(f"* {bid} {d}D")
+                feat = ','.join(pos.split('-'))
+                lines.append(f"{token.strip()}\t{feat}")
+            lines.append('EOS')
+            print('\n'.join(lines))
                 
+def chj2unidic(token):
+    pos = token['pos(S)'].split('-')
+    features = ['' for _ in range(29)]
+    for i, p in enumerate(pos):
+        features[i] = p
+    features[4] = token['sysCType(S)']
+    features[5] = token['cForm(S)']
+    features[6] = token['reading(S)']
+    features[7] = token['lemma(S)']
+    features[8] = token['orthToken(S)']
+    features[9] = token['pronToken(S)']
+    features[10] = token['orthBase(S)']
+    features[11] = ""
+    features[12] = token['wType(S)']
+    features[13] = ""
+    features[14] = ""
+    features[15] = ""
+    features[23] = token['formBase(S)']
+    features[27] = token['lid(S)']
+    features[28] = token['lemmaID(S)']
+    return features
+    
+
+@app.command()
+def chj2jsonl(chjjsonl: str, bunruifilename: str, bunruihist: str):
+    """
+    CHJをJSONLに変換したMonaka用データを係り受け解析用JSONLに変換する
+    """
+    """
+    {
+  "sent_id": "OC01_00001-1",
+  "text": "詰め将棋の本を買ってきました。",
+  "bunsetsu": [
+    "詰め将棋の",
+    "本を",
+    "買って",
+    "きました。"
+  ],
+  "pos": [
+    "動詞-一般-下一段-マ行",
+    "名詞-普通名詞-一般",
+    "助詞-格助詞",
+    "名詞-普通名詞-一般",
+    "助詞-格助詞",
+    "動詞-一般-五段-ワア行",
+    "助詞-接続助詞",
+    "動詞-非自立可能-カ行変格",
+    "助動詞-助動詞-マス",
+    "助動詞-助動詞-タ",
+    "補助記号-句点"
+  ],
+  "rel": [
+    "CONT-compound",
+    "SEM_HEAD-shead",
+    "SYN_HEAD-case",
+    "SEM_HEAD-shead",
+    "SYN_HEAD-case",
+    "SEM_HEAD-shead",
+    "SYN_HEAD-mark",
+    "ROOT-shead",
+    "SYN_HEAD-aux",
+    "FUNC-aux",
+    "CONT-punct"
+  ],
+  "tokens": [
+    "詰め",
+    "将棋",
+    "の",
+    "本",
+    "を",
+    "買っ",
+    "て",
+    "き",
+    "まし",
+    "た",
+    "。"
+  ],
+  "bid": [
+    0,
+    0,
+    0,
+    1,
+    1,
+    2,
+    2,
+    3,
+    3,
+    3,
+    3
+  ],
+  "dependency": [
+    {
+      "head": 1,
+      "rel": "nmod",
+      "id": 0
+    },
+    {
+      "head": 2,
+      "rel": "obj",
+      "id": 1
+    },
+    {
+      "head": 3,
+      "rel": "advcl",
+      "id": 2
+    },
+    {
+      "head": 3,
+      "rel": "root",
+      "id": 3
+    }
+  ],
+  "lemma": [
+    "詰める",
+    "将棋",
+    "の",
+    "本",
+    "を",
+    "買う",
+    "て",
+    "来る",
+    "ます",
+    "た",
+    "。"
+  ],
+  "misc": [
+    {
+      "BunsetuBILabel": "B",
+      "BunsetuPositionType": "CONT",
+      "LUWBILabel": "B",
+      "LUWPOS": "名詞-普通名詞-一般",
+      "SpaceAfter": "No",
+      "UnidicInfo": "ツメル,詰める,詰め,詰める,ツメ,,,ツメル,ツメショウギ,詰め将棋"
+    },
+  ],
+  "upos": [
+    "VERB",
+    "NOUN",
+    "ADP",
+    "NOUN",
+    "ADP",
+    "VERB",
+    "SCONJ",
+    "VERB",
+    "AUX",
+    "AUX",
+    "PUNCT"
+  ]
+}
+    """
+    """
+    {
+  "sentence": "やまとうたは、人の心を種として、万の言の葉とぞなれりける。",
+  "tokens": [
+    {
+      "start(S)": "10",
+      "end(S)": "40",
+      "boundary(S)": "B",
+      "orthToken(S)": "やまと",
+      "pronToken(S)": "ヤマト",
+      "reading(S)": "ヤマト",
+      "lemma(S)": "ヤマト",
+      "originalText(S)": "やまと",
+      "pos(S)": "名詞-固有名詞-地名-一般",
+      "sysCType(S)": "",
+      "cForm(S)": "",
+      "apply(S)": "",
+      "additionalInfo(S)": "",
+      "lid(S)": "10572912436322816",
+      "meaning(S)": "",
+      "UpdUser(S)": "ymatuzaki",
+      "UpdDate(S)": "2023-03-09 13:35:53.417",
+      "order(S)": "10",
+      "note(S)": "",
+      "open(S)": "10",
+      "close(S)": "40",
+      "wType(S)": "固",
+      "fix(S)": "0",
+      "variable(S)": "1",
+      "formBase(S)": "ヤマト",
+      "lemmaID(S)": "38464",
+      "usage(S)": "",
+      "sentenceId(S)": "10",
+      "s_memo(S)": "",
+      "origChar(S)": "やまと",
+      "pSampleID(S)": "0",
+      "pStart(S)": "0",
+      "orthBase(S)": "やまと",
+      "file(L)": "1101_古今和歌集_S001_仮名序",
+      "l_orthToken(L)": "やまとうた",
+      "l_pos(L)": "名詞-普通名詞-一般",
+      "l_cType(L)": "",
+      "l_cForm(L)": "",
+      "l_reading(L)": "ヤマトウタ",
+      "l_lemma(L)": "やまと歌",
+      "luw(L)": "B",
+      "memo(L)": "",
+      "UpdUser(L)": "ymatuzaki",
+      "UpdDate(L)": "2023-03-09 13:46:57.903",
+      "l_start(L)": "10",
+      "l_end(L)": "60",
+      "bunsetsu1(L)": "B",
+      "bunsetsu2(L)": "",
+      "corpusName(L)": "CHJ平安",
+      "diffSuw(L)": "1",
+      "l_lemmaNew(L)": "やまと歌",
+      "l_readingNew(L)": "ヤマトウタ",
+      "l_orthBase(L)": "やまとうた",
+      "l_formBase(L)": "ヤマトウタ",
+      "l_pronToken(L)": "ヤマトウタ",
+      "l_wType(L)": "混",
+      "l_originalText(L)": "やまとうた",
+      "complex(L)": "0",
+      "l_meaning(L)": "",
+      "l_kanaToken(L)": "ヤマトウタ",
+      "l_formOrthBase(L)": "やまと歌",
+      "l_origChar(L)": "やまとうた",
+      "note(L)": "",
+      "pSampleID(L)": "0",
+      "pStart(L)": "0",
+      "rn": "1"
+    },
+
+  "corpusName(S)": "CHJ平安",
+  "file(S)": "1101_古今和歌集_S001_仮名序"
+    """
+    with open(bunruifilename) as f:
+        rd = csv.reader(f, delimiter='\t')
+        next(rd) # skip header
+        lemmaid2wlsp = {row[1].strip(): row[0].split(',')[0] for row in rd if len(row) > 1}
+    
+    with open(bunruihist) as f:
+        rd = csv.reader(f, delimiter='\t')
+        next(rd) # skip header
+        d2 = {row[1].strip(): f"{row[0][0]}.{row[0].strip()[1:]}" for row in rd if len(row) > 1}
+        lemmaid2wlsp.update(d2)
+    
+    with open(chjjsonl) as f:
+        for line in f:
+            js = json.loads(line)
+            tokens = [t for t in js['tokens'] if t['pos(S)'] not in ['空白', '記号-空白']]
+            res = {
+                "sent_id": f"{js['corpusName(S)']}_{js['file(S)']}_{js['tokens'][0]['start(S)']}",
+                "text": js['sentence'],
+                "bunsetsu": [],
+                "tokens": [token['origChar(S)'] for token in tokens],
+                "bid": [],
+                "unidic": [],
+                "wlsp": None,
+                "misc": [],
+                "lemma": [token['lemma(S)'] for token in tokens],
+                "lid": [token['lemmaID(S)'] for token in tokens],
+                "dependency": [],
+                "pos": [f"{token['pos(S)']}-{token['sysCType(S)']}" if len(token['sysCType(S)']) > 2 else token['pos(S)'] for token in tokens],
+            }
+            bid = -1
+            bnst = None
+            for token in tokens:
+                flg = 'B' in token['bunsetsu1(L)']
+                if bnst:
+                    if flg:
+                        res['bunsetsu'].append(bnst)
+                        bnst = ''
+                        bid += 1
+                else:
+                    bid = 0
+                res['bid'].append(bid)
+                res['unidic'].append(chj2unidic(token))
+
+                if bnst is None:
+                    bnst = token['origChar(S)']
+                else:
+                    bnst += token['origChar(S)']
+            
+            if bnst is None:
+                continue
+            if len(bnst) > 0:
+                res['bunsetsu'].append(bnst)
+
+            res['wlsp'] = [lemmaid2wlsp.get(l, '') for l in res['lid']]
+
+            print(json.dumps(res, ensure_ascii=False))
 
 
 
+def read_cabocha(cabochafile:str):
+    with open(cabochafile) as f:
+        dep = list()
+        for line in f:
+            if 'EOS' in line:
+                yield dep
+                dep.clear()
+            if line.startswith('*'):
+                tokens = line.split(' ')
+                id_ = int(tokens[1])
+                head = int(tokens[2][:-1]) # nD形式なのでD削除
+                if head == -1:
+                    head = id_
+                dep.append({'id': id_, 'head': head})
+        
+
+@app.command()
+def cabocha2jsonl(datajsonl:str, cabochafile:str):
+    with open(datajsonl) as f:
+        for line, cdep in zip(f, read_cabocha(cabochafile)):
+            js = json.loads(line)
+            for d in cdep:
+                js['dependency'][d['id']]['head'] = d['head']
+            
+            print(json.dumps(js, ensure_ascii=False))
+
+
+
+@app.command()
+def analyze_pred(goldjsonl: str, predjsonl: str):
+    distacc = dict()
+    relacc = dict()
+    with open(goldjsonl) as fg, open(predjsonl) as fp:
+        for lg, lp in zip(fg, fp):
+            gold = json.loads(lg)
+            pred = json.loads(lp)
+
+            for gdep, pdep in zip(gold['dependency'], pred['dependency']):
+                dist = gdep['head'] - gdep['id']
+                rel = gdep['rel']
+                dd = distacc.get(dist, {'a': 0, 'c': 0})
+                dr = relacc.get(rel, {'a': 0, 'c': 0})
+                dd['a'] += 1
+                dr['a'] += 1
+                if pdep['head'] == gdep['head']:
+                    dd['c'] += 1
+                    dr['c'] += 1
+
+                distacc[dist] = dd
+                relacc[rel] = dr
+    
+    for d in relacc.values():
+        d['acc'] = d['c'] /d ['a']
+    
+    min_dist = min(distacc.keys())
+    max_dist = max(distacc.keys())
+    distances = list(range(min_dist, max_dist+1))
+    res = {
+        'distances': distances, 
+        'dist_count': [distacc[d]['a'] if d in distacc else 0 for d in distances],
+        'dist_correct': [distacc[d]['c'] if d in distacc else 0 for d in distances],
+        'dist_acc': [distacc[d]['c'] / distacc[d]['a'] if d in distacc else None for d in distances],
+        'rel': relacc
+    }
+
+    print(json.dumps(res, indent=True))
 
 
 if __name__ == "__main__":

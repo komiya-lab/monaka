@@ -642,17 +642,24 @@ def lemma_stats(jsonfiles: List[str]):
         d['suw_acc'] = d['c'] / d['a']
 
     print(json.dumps(res, indent=True, ensure_ascii=False))
+    
+def add_inv_dep(buf):
+    buf['inv_dep'] = [[] for _ in buf['ids']]
+    for ids, dep in zip(buf['ids'], buf['dep']):
+        buf['inv_dep'][dep].append(ids)
 
 def load_cabocha(fname: str):
     with open(fname) as f:
-        buf = {"sentence": "", "dep": [], "tokens": [], "chunk": []}
+        buf = {"sentence": "", "dep": [], "tokens": [], "chunk": [], "ids": [], "tpos": [], "words": [], "lines": []}
         c = -1
         for line in f:
-            if line.startswith("#"):
+            buf["lines"].append(line)
+            if line.startswith("#") or len(line.strip()) == 0:
                 continue
             elif line.startswith("EOS"):
+                add_inv_dep(buf)
                 yield buf
-                buf = {"sentence": "", "dep": [], "tokens": [], "chunk": []}
+                buf = {"sentence": "", "dep": [], "tokens": [], "chunk": [], "ids": [], "tpos": [], "words": [], "lines": []}
                 c = -1
                 continue
             elif line.startswith("*"):
@@ -660,32 +667,106 @@ def load_cabocha(fname: str):
                 dep = int(tokens[2][:-1])
                 c = int(tokens[1])
                 #print(tokens)
+                buf["ids"].append(c)
                 buf["dep"].append(dep)
+                buf["words"].append("")
                 continue
             else:
                 #print(c)
                 tokens = line.strip().split("\t")
                 buf["sentence"] += tokens[0]
+                buf["words"][-1] += tokens[0]
                 buf["tokens"].append(tokens)
                 buf["chunk"].append(c)
+                if len(buf["tpos"]) < len(buf["ids"]):
+                    buf["tpos"].append(tokens[1].split(',')[0])
         if len(buf["sentence"]) > 0:
+            add_inv_dep(buf)
             yield buf
 
 @app.command()
-def cabocha_eval(result: str, gold: str):
+def cabocha_eval(result: str, gold: str, distance: Optional[str]=None, skip:bool=False):
     rgen = load_cabocha(result)
     ggen = load_cabocha(gold)
     a = 0
     c = 0
+    if distance:
+        dist = dict()
     for r, g in zip(rgen, ggen):
         #print(r)
+        if skip:
+            if len(g["dep"]) != len(r["dep"]) or len(g["chunk"]) != len(r["chunk"]):
+                continue
+            for gw, rw in zip(g['words'], r['words']):
+                if gw != rw:
+                    continue
         a += len(g["dep"])
-        for rd, gd in zip(r["dep"], g["dep"]):
+        for rd, gd, rc, gc in zip(r["dep"], g["dep"], r["chunk"], g["chunk"]):
             if rd == gd:
                 c += 1
+            if distance:
+                if gd < 0:
+                    d = 0
+                else:
+                    d = gd - gc
+                dic = dist.get(d, {"a": 0, "c": 0})
+                dic["a"] += 1
+                if rd == gd:
+                    dic["c"] += 1
+                dist[d] = dic
 
     print(f"sentence: {c/a*100} ({c}/{a})")
+    if distance:
+        for k, v in dist.items():
+            v["acc"] = v["c"] / v["a"]
+        with open(distance, 'w') as f:
+            json.dump(dist, f, ensure_ascii=False, indent=True)
 
+
+@app.command()
+def cabocha_stats(result: str, gold: str):
+    rgen = load_cabocha(result)
+    ggen = load_cabocha(gold)
+    res = dict()
+    for r, g in zip(rgen, ggen):
+        #print(r)
+        for rd, gd in zip(r["dep"], g["dep"]):
+            tpos = r["tpos"][gd]
+            d = res.get(tpos, {"a": 0, "c": 0})
+            d['a'] += 1
+            if rd == gd:
+                d['c'] += 1
+            res[tpos] = d
+    for k, v in res.items():
+        print(f"{k}\t{v['c']/v['a'] if v['a'] > 0 else 0.0}\t{v['c']}\t{v['a']}")
+
+
+@app.command()
+def search_cases(result: str, gold: str, distance: Optional[int]=None, pos: Optional[str]=None, max_lines: Optional[int]=30):
+    rgen = load_cabocha(result)
+    ggen = load_cabocha(gold)
+
+    for r, g in zip(rgen, ggen):
+        #print(r)
+        for rd, gd, gc in zip(r["dep"], g["dep"], g["ids"]):
+            tpos = r["tpos"][gd]
+            if rd == gd:
+                continue
+            if gd < 0:
+                d = 0
+            else:
+                d = gd - gc
+
+            if max_lines:
+                if len(g['lines']) > max_lines:
+                    continue
+
+            if distance:
+                if d == distance:
+                    print("".join(g['lines']))
+            if pos:
+                if pos in tpos:
+                    print("".join(g['lines']))
 
 
 if __name__ == "__main__":
